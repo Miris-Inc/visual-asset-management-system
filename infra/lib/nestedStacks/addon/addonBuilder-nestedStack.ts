@@ -11,6 +11,7 @@ import * as cdk from "aws-cdk-lib";
 import { Stack, NestedStack } from "aws-cdk-lib";
 import { GarnetFrameworkBuilderNestedStack } from "./garnetFramework/garnetFrameworkBuilder-nestedStack";
 import { PhysnaSyncBuilderNestedStack } from "./physna/physnaSyncBuilder-nestedStack";
+import { MirisBuilderNestedStack } from "./miris/mirisBuilder-nestedStack";
 import * as ec2 from "aws-cdk-lib/aws-ec2";
 import * as apigwv2 from "aws-cdk-lib/aws-apigatewayv2";
 import { RouteRegistry } from "../apiLambda/apiRouteRegistry";
@@ -84,6 +85,27 @@ export class AddonBuilderNestedStack extends NestedStack {
             // are gated by a single feature flag so the web UI only surfaces
             // them when the add-on is deployed.
             this.enabledFeatures.push(ADDON_APP_FEATURES.PHYSNA_ADDON);
+        }
+
+        //Miris Spatial Streaming
+        if (props.config.app.addons.useMirisStreaming.enabled) {
+            const mirisBuilderNestedStack = new MirisBuilderNestedStack(
+                this,
+                "MirisBuilderNestedStack",
+                {
+                    ...props,
+                    config: props.config,
+                    storageResources: props.storageResources,
+                    vpc: props.vpc,
+                    isolatedSubnets: props.isolatedSubnets,
+                    lambdaCommonBaseLayer: props.lambdaCommonBaseLayer,
+                    registry: props.registry,
+                }
+            );
+
+            // The Miris streaming viewer is gated by this flag, so the web UI only surfaces it
+            // when the add-on is deployed.
+            this.enabledFeatures.push(ADDON_APP_FEATURES.MIRIS_ADDON);
         }
 
         // Add-on switches are declared in ADDON_APP_FEATURES (common/addonAppFeatures.ts). A core

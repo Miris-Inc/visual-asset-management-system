@@ -21,7 +21,8 @@
  * *   **backend ⊆ CDK holds only once every route-contributing feature is enabled.** Routes can be
  *     feature-gated: `GET /addon/physna/viewer` is registered by the Physna add-on stack, which ships
  *     disabled, so against the stock commercial template the backend surface is legitimately one pair
- *     larger. Measured — that single route is the whole difference (164 backend pairs vs 163). Asserting
+ *     larger. Measured — that single route is the whole difference (164 backend pairs vs 163); the
+ *     Miris add-on's two routes are gated the same way. Asserting
  *     equality against the stock template would therefore have to hardcode an allowance, which would
  *     grow silently with each new optional route; enabling the add-on instead keeps the assertion exact.
  *
@@ -202,6 +203,17 @@ function withRouteContributingFeatures(c: any) {
         physna.clientSecret = "synth-only-client-secret"; // pragma: allowlist secret
         physna.credentialsSecretArn = "";
     }
+    // The Miris add-on registers GET /addon/miris/asset-status and POST /addon/miris/viewer-key
+    // and ships disabled. perView mode builds every resource the add-on can hold.
+    const miris = c.app.addons?.useMirisStreaming;
+    if (miris) {
+        c.app.webUi.allowUnsafeEvalFeatures = true;
+        miris.enabled = true;
+        miris.viewerKeyMode = "perView";
+        miris.viewerKey = "";
+        miris.apiKeySecretArn =
+            "arn:aws:secretsmanager:us-east-1:123456789012:secret:synth-only-miris-key-AbCdEf";
+    }
 }
 
 describe("apiRoutes.py parses as expected", () => {
@@ -279,6 +291,8 @@ describe("every backend route is registered with API Gateway", () => {
         // Proves the mutation took effect. Without this, the parity assertion below could pass because
         // the feature never turned on AND the route was dropped from the backend at the same time.
         expect(cdkPairs(synth).has("GET /addon/physna/viewer")).toBe(true);
+        expect(cdkPairs(synth).has("GET /addon/miris/asset-status")).toBe(true);
+        expect(cdkPairs(synth).has("POST /addon/miris/viewer-key")).toBe(true);
     });
 
     test("no backend route is unregistered", () => {

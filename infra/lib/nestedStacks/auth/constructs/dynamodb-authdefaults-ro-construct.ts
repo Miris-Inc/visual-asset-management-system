@@ -22,7 +22,10 @@ import { NagSuppressions } from "cdk-nag";
 import { kmsKeyPolicyStatementGenerator } from "../../../helper/security";
 import { Service } from "../../../../lib/helper/service-helper";
 import * as ServiceHelper from "../../../../lib/helper/service-helper";
-import { addonReadOnlyApiRouteCriteria } from "../../addon/addonDefaultRoutes";
+import {
+    addonReadOnlyApiPostRouteCriteria,
+    addonReadOnlyApiRouteCriteria,
+} from "../../addon/addonDefaultRoutes";
 
 export interface DynamoDbAuthDefaultsROConstructStackProps extends cdk.StackProps {
     customResourceRole: iam.Role;
@@ -847,6 +850,7 @@ export class DynamoDbAuthDefaultsROConstructStack extends Construct {
                                 },
                             },
                         },
+                        ...addonReadOnlyApiPostRouteCriteria(props.config, roleNameIDClean),
                     ],
                 },
                 description: {

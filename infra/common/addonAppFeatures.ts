@@ -12,4 +12,5 @@
  */
 export enum ADDON_APP_FEATURES {
     PHYSNA_ADDON = "PHYSNA_ADDON",
+    MIRIS_ADDON = "MIRIS_ADDON",
 }
