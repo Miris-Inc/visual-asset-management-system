@@ -29,6 +29,7 @@ jest.mock("../core/PluginRegistry", () => {
     };
     return {
         PluginRegistry: { getInstance: () => instance },
+        deriveCompareContext: () => ({}),
         getFileExtensions: (files: any[]) =>
             Array.from(
                 new Set(
@@ -160,6 +161,134 @@ describe("DynamicViewer", () => {
 
         await waitFor(() => expect(screen.getByText(/viewer:threejs-viewer/)).toBeInTheDocument());
         expect(registry().switchToPlugin.mock.calls.length).toBe(switchCalls);
+    });
+
+    describe("autoSelect among several compatible viewers", () => {
+        // Candidates arrive sorted by priority, as PluginRegistry.getCompatibleViewers returns them.
+        const candidate = (id: string, priority: number, autoSelect?: boolean) => {
+            const base = metadata(id, id, [".usd"]);
+            return {
+                ...base,
+                config: {
+                    ...base.config,
+                    priority,
+                    ...(autoSelect === undefined ? {} : { autoSelect }),
+                },
+            };
+        };
+
+        const serve = (candidates: ReturnType<typeof candidate>[]) => {
+            registry().getCompatibleViewers.mockReturnValue(candidates);
+            registry().switchToPlugin.mockImplementation(async (id: string) => ({
+                config: candidates.find((m) => m.config.id === id)?.config,
+                component: () => <div>{`viewer:${id}`}</div>,
+                isLoaded: true,
+            }));
+        };
+
+        // With several candidates and no selection the host renders the chooser over an empty
+        // viewer area.
+        const expectChooser = async () => {
+            await waitFor(() =>
+                expect(screen.getByText("No Viewer Component Selected")).toBeInTheDocument()
+            );
+            expect(registry().switchToPlugin).not.toHaveBeenCalled();
+        };
+
+        it("opens the top viewer when it sets autoSelect and outranks the next", async () => {
+            serve([candidate("preferred-viewer", 0, true), candidate("general-viewer", 1)]);
+
+            render(view([file("scene.usd")]));
+
+            await waitFor(() =>
+                expect(screen.getByText("viewer:preferred-viewer")).toBeInTheDocument()
+            );
+            expect(registry().switchToPlugin).not.toHaveBeenCalledWith("general-viewer");
+        });
+
+        it("opens a lone autoSelect viewer as it would any single viewer", async () => {
+            serve([candidate("preferred-viewer", 0, true)]);
+
+            render(view([file("scene.usd")]));
+
+            await waitFor(() =>
+                expect(screen.getByText("viewer:preferred-viewer")).toBeInTheDocument()
+            );
+        });
+
+        it("leaves a priority tie between autoSelect viewers to the user", async () => {
+            serve([candidate("first-viewer", 0, true), candidate("second-viewer", 0, true)]);
+
+            render(view([file("scene.usd")]));
+
+            await expectChooser();
+        });
+
+        it("asks for a choice when no candidate sets autoSelect", async () => {
+            serve([candidate("ranked-viewer", 0), candidate("general-viewer", 1)]);
+
+            render(view([file("scene.usd")]));
+
+            await expectChooser();
+        });
+
+        it("asks for a choice when only a lower-ranked viewer sets autoSelect", async () => {
+            serve([candidate("ranked-viewer", 0, false), candidate("flagged-viewer", 1, true)]);
+
+            render(view([file("scene.usd")]));
+
+            await expectChooser();
+        });
+
+        it("moves to the new flagged top viewer when the files outgrow the auto-selected one", async () => {
+            const first = [candidate("usd-preferred", 0, true), candidate("general-viewer", 1)];
+            const second = [candidate("gltf-preferred", 0, true), candidate("general-viewer", 1)];
+            const all = [...first, ...second];
+            registry().switchToPlugin.mockImplementation(async (id: string) => ({
+                config: all.find((m) => m.config.id === id)?.config,
+                component: () => <div>{`viewer:${id}`}</div>,
+                isLoaded: true,
+            }));
+
+            registry().getCompatibleViewers.mockReturnValue(first);
+            const { rerender } = render(view([file("scene.usd")]));
+            await waitFor(() =>
+                expect(screen.getByText("viewer:usd-preferred")).toBeInTheDocument()
+            );
+
+            registry().getCompatibleViewers.mockReturnValue(second);
+            rerender(view([file("scene.gltf")]));
+
+            await waitFor(() =>
+                expect(screen.getByText("viewer:gltf-preferred")).toBeInTheDocument()
+            );
+            expect(screen.queryByText("viewer:usd-preferred")).toBeNull();
+            expect(registry().switchToPlugin).not.toHaveBeenCalledWith("general-viewer");
+        });
+
+        it("ignores autoSelect in compare mode", async () => {
+            serve([candidate("preferred-viewer", 0, true), candidate("general-viewer", 1)]);
+
+            render(
+                <DynamicViewer
+                    files={[file("one.usd"), file("two.usd")] as any}
+                    assetId="a1"
+                    databaseId="d1"
+                    viewerMode="wide"
+                    onViewerModeChange={() => undefined}
+                    mode="compare"
+                />
+            );
+
+            await expectChooser();
+            expect(registry().getCompatibleViewers).toHaveBeenCalledWith(
+                expect.anything(),
+                expect.anything(),
+                false,
+                "compare",
+                expect.anything()
+            );
+        });
     });
 
     it("clears a no-compatible-viewer error once the user moves to a viewable file", async () => {
