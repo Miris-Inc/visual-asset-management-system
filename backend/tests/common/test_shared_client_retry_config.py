@@ -97,6 +97,10 @@ DELIBERATE_DEPARTURES = {
     # Best-effort Location Service key lookup on the /secure-config path: bounded so a VPC with no
     # route to the service degrades to an empty map URL inside the API Gateway integration timeout.
     ("handlers/config/configService.py", "geo_lookup_config"),
+    # The Miris viewer-key route answers inside API Gateway's 29 s limit: its key-table write and
+    # Integration Key read take short timeouts and two attempts so the request deadline holds.
+    ("handlers/addon/miris/mintViewerKey.py", "key_table_config"),
+    ("handlers/addon/miris/mirisIntegration.py", "_secrets_config"),
 }
 
 

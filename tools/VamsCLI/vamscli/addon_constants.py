@@ -12,3 +12,6 @@ cycle.
 
 # Physna
 FEATURE_PHYSNA_ADDON = "PHYSNA_ADDON"
+
+# Miris Spatial Streaming
+FEATURE_MIRIS_ADDON = "MIRIS_ADDON"

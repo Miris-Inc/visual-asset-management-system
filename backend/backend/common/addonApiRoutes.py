@@ -11,11 +11,21 @@ with API Gateway is the one gated on ``app.addons.*``.
 
 from typing import Tuple
 
-from common.apiRouteTypes import GET, ApiRoute
+from common.apiRouteTypes import GET, POST, ApiRoute
 
 # ---------------------------------------------------------------------------
 # Physna
 # ---------------------------------------------------------------------------
 API_ADDON_PHYSNA_VIEWER = ApiRoute("/addon/physna/viewer", (GET,), "addons")
 
-ADDON_ROUTES: Tuple[ApiRoute, ...] = (API_ADDON_PHYSNA_VIEWER,)
+# ---------------------------------------------------------------------------
+# Miris Spatial Streaming
+# ---------------------------------------------------------------------------
+API_ADDON_MIRIS_ASSET_STATUS = ApiRoute("/addon/miris/asset-status", (GET,), "addons")
+API_ADDON_MIRIS_VIEWER_KEY = ApiRoute("/addon/miris/viewer-key", (POST,), "addons")
+
+ADDON_ROUTES: Tuple[ApiRoute, ...] = (
+    API_ADDON_PHYSNA_VIEWER,
+    API_ADDON_MIRIS_ASSET_STATUS,
+    API_ADDON_MIRIS_VIEWER_KEY,
+)

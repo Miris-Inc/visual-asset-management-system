@@ -82,6 +82,11 @@
                     "field": "route__path",
                     "operator": "starts_with",
                     "value": "/addon/physna/viewer"
+                },
+                {
+                    "field": "route__path",
+                    "operator": "equals",
+                    "value": "/addon/miris/asset-status"
                 }
             ],
             "groupPermissions": [{ "action": "GET", "type": "allow" }]
@@ -117,6 +122,11 @@
                     "field": "route__path",
                     "operator": "starts_with",
                     "value": "/check-subscription"
+                },
+                {
+                    "field": "route__path",
+                    "operator": "equals",
+                    "value": "/addon/miris/viewer-key"
                 }
             ],
             "groupPermissions": [{ "action": "POST", "type": "allow" }]
