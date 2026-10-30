@@ -174,7 +174,7 @@ The Deadline Cloud execution type requires `app.pipelines.deadlineCloudExecution
 
 ### Built-In Pipelines
 
-VAMS includes twenty-seven built-in processing pipelines, each deployable through configuration flags. Pipeline families that ship several model variants register each variant as its own pipeline with its own flag.
+VAMS includes twenty-eight built-in processing pipelines, each deployable through configuration flags. Pipeline families that ship several model variants register each variant as its own pipeline with its own flag.
 
 | Pipeline                                | Config Flag                                       | Description                                                                                                                                                      | Default  |
 | --------------------------------------- | ------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------- |
@@ -188,6 +188,7 @@ VAMS includes twenty-seven built-in processing pipelines, each deployable throug
 | Video SOP/BOM Extraction                | `useGenAiVideoSopBom`                             | Teardown-video transcription and SOP, LCA BOM, and lab summary extraction via Amazon Transcribe and Amazon Bedrock                                               | Disabled |
 | GenAI CAD STEP Agent                    | `useGenAiCadStepAgent`                            | Create or modify CAD STEP files from a prompt with a Strands agent on Amazon Bedrock AgentCore or AWS Batch                                                      | Disabled |
 | Image to 3D                             | `useImageTo3d`                                    | Image to 3D mesh generation with a selectable open-weight model or a Blender agent, with optional cleanup, colour and print-readiness stages to a watertight STL | Disabled |
+| Miris Upload                            | `addons.useMirisStreaming.upload`                 | Upload of a USD asset's root file to Miris Spatial Streaming, recorded as file metadata for the Miris viewer                                                     | Disabled |
 | NVIDIA Cosmos Text-to-World 2B v2       | `useNvidiaCosmos.modelsPredict.text2world2B_v2`   | Video generation from text prompts using Cosmos-Predict2.5 2B                                                                                                    | Disabled |
 | NVIDIA Cosmos Text-to-World 14B v2      | `useNvidiaCosmos.modelsPredict.text2world14B_v2`  | High-quality video generation from text prompts using Cosmos-Predict2.5 14B                                                                                      | Disabled |
 | NVIDIA Cosmos Video-to-World 2B v2      | `useNvidiaCosmos.modelsPredict.video2world2B_v2`  | Video generation from video and text input using Cosmos-Predict2.5 2B                                                                                            | Disabled |
@@ -278,6 +279,7 @@ VAMS uses a feature flag system to conditionally enable capabilities at deployme
 | `AUTHPROVIDER_EXTERNALOAUTHIDP` | Indicates external OAuth2 authentication                                                                                                                                          |
 | `PHYSNA_ADDON`                  | Enables Physna add-on frontend features (viewer plugin, future Physna-powered UI surfaces). Emitted automatically when `app.addons.usePhysnaSync.enabled` is `true`.              |
 | `MIRIS_ADDON`                   | Enables the Miris Spatial Streaming viewer plugin for USD files, together with `ALLOWUNSAFEEVAL`. Emitted automatically when `app.addons.useMirisStreaming.enabled` is `true`.    |
+| `MIRIS_UPLOAD`                  | Offers the Miris viewer's **Stream with Miris** button, which runs the Miris upload pipeline. Emitted automatically when `app.addons.useMirisStreaming.upload.enabled` is `true`. |
 | `DEADLINECLOUD_PIPELINES`       | Enables the AWS Deadline Cloud pipeline execution type in the web interface. Emitted automatically when `app.pipelines.deadlineCloudExecutionTypeEnabled` is `true`.              |
 
 ### Additional Configuration

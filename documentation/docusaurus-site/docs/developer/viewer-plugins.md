@@ -326,6 +326,7 @@ To enable this viewer, set `app.webUi.allowUnsafeEvalFeatures` to `true` in the 
 | `ALLOWUNSAFEEVAL`  | Enables the Needle USD, SuperSplat Editor, ThatOpen IFC BIM, Robotics Data and Miris Spatial Streaming viewers, plus the Three.js CAD formats (all require the `unsafe-eval` CSP directive) |
 | `LOCATIONSERVICES` | Can be used to gate geospatial viewers                                                                                                                                                      |
 | `MIRIS_ADDON`      | Enables the Miris Spatial Streaming viewer, together with `ALLOWUNSAFEEVAL`                                                                                                                 |
+| `MIRIS_UPLOAD`     | Offers the Miris Spatial Streaming viewer's **Stream with Miris** button, which runs the add-on's upload pipeline                                                                           |
 | `PHYSNA_ADDON`     | Enables the Physna viewer                                                                                                                                                                   |
 
 ### Multiple Requirements

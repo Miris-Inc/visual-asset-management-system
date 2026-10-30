@@ -254,7 +254,7 @@ done
 ```
 
 :::note[Miris viewer keys and assets]
-In the Miris Spatial Streaming add-on's `perView` mode, the retained `MirisViewerKeyStorageTable` lists the per-view viewer keys VAMS minted. Its cleanup Lambda function is deleted with the stack, so keys whose rows TTL had not yet removed stay in the Miris workspace after teardown; they have already expired or expire within `viewerKeyTtlMinutes`. Delete them in the Miris Portal or with `miris viewerkey delete` if the workspace should not keep them. Miris assets, the deployment's static viewer key, and the Integration Key secret named in `apiKeySecretArn` are not VAMS resources and are not removed by uninstalling VAMS. The GLOBAL **Miris stream** metadata schema record is stored in the metadata schema table, so deleting that table removes it.
+In the Miris Spatial Streaming add-on's `perView` mode, the retained `MirisViewerKeyStorageTable` lists the per-view viewer keys VAMS minted. Its cleanup Lambda function is deleted with the stack, so keys whose rows TTL had not yet removed stay in the Miris workspace after teardown; they have already expired or expire within `viewerKeyTtlMinutes`. Delete them in the Miris Portal or with `miris viewerkey delete` if the workspace should not keep them. The Miris assets the upload pipeline created, the deployment's static viewer key, and the Integration Key secret named in `apiKeySecretArn` are not VAMS resources and are not removed by uninstalling VAMS. The GLOBAL **Miris stream** metadata schema record is stored in the metadata schema table, so deleting that table removes it.
 :::
 
 ## Step 4: Delete Amazon CloudWatch log groups
@@ -270,7 +270,7 @@ The key named log groups are:
 -   `/aws/vendedlogs/VAMSCloudTrailLogs-{hash}` — AWS CloudTrail logs (conditional on `addStackCloudTrailLogs`)
 -   `aws-waf-logs-vams-{hash}` — AWS WAF request logs, one per web ACL (conditional on `useWaf`). Outside the `/aws/vendedlogs/` namespace because AWS WAF requires the `aws-waf-logs-` prefix, and the CloudFront ACL's group is in us-east-1 rather than the deployment Region
 -   `/aws/vendedlogs/VAMSstateMachine-*-{hash}` — Per-pipeline state machine logs
--   `/aws/vendedlogs/Pipelines/*` — Per-pipeline container logs. The AWS Fargate job groups are `CoordTransform{hash}`, `Metadata3dLabelingBlenderRenderer{hash}`, `Preview3dThumbnail{hash}`, `PcPotreeViewerPDAL{hash}`, `PcPotreeViewerPotree{hash}`, `VideoSopBom{hash}` and `CadStepAgent{hash}` (conditional on the matching pipeline flag; `CadStepAgent{hash}` on the GenAI CAD STEP agent's `fargate` runtime only); the RapidPipeline and ModelOps groups are named for their container
+-   `/aws/vendedlogs/Pipelines/*` — Per-pipeline container logs. The AWS Fargate job groups are `CoordTransform{hash}`, `Metadata3dLabelingBlenderRenderer{hash}`, `Preview3dThumbnail{hash}`, `PcPotreeViewerPDAL{hash}`, `PcPotreeViewerPotree{hash}`, `VideoSopBom{hash}`, `CadStepAgent{hash}` and `MirisUpload{hash}` (conditional on the matching pipeline flag; `CadStepAgent{hash}` on the GenAI CAD STEP agent's `fargate` runtime only, and `MirisUpload{hash}` on the Miris add-on's `upload.enabled`); the RapidPipeline and ModelOps groups are named for their container
 
 The `/aws/codebuild/` build log groups of pipelines configured with `useCodeBuild: true` are not named by VAMS; the last command block below finds and deletes them.
 

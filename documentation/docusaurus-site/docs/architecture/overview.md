@@ -166,6 +166,7 @@ graph TD
     APIBuilder2 --> Pipelines
     Storage --> Addons
     Names --> Addons
+    APIBuilder2 --> Addons
     Storage --> API
     Auth --> API
     APIBuilder --> API

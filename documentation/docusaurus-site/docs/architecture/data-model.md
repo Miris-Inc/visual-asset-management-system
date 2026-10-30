@@ -583,6 +583,14 @@ by the input file that the data was derived from and one keyed by the execution 
 pipelines/{pipelineName}/{executionId}/{working_files}
 ```
 
+The Miris Upload pipeline also keeps its duplicate-upload claims at the bucket root, one object per asset and USD content fingerprint, under the asset's database because an asset ID is unique only within its database:
+
+```
+locks/miris-upload/{databaseId}/{assetId}/{fingerprint}.claim
+```
+
+The fingerprint is a SHA-256 digest of the asset-relative key and ETag of every file under the asset root with a trigger extension. The claim is created with a conditional put (`If-None-Match: *`) and records a digest of the owning execution's workflow task token. A run that does not succeed deletes its claim; a successful run keeps its claim and deletes the asset's other claims. See [Miris Upload](../pipelines/miris-upload.md#duplicate-uploads-and-re-runs).
+
 Where:
 
 -   `databaseId` scopes every derived object to the database that owns the asset, so a read is confined to

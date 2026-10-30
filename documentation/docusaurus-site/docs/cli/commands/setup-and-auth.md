@@ -430,6 +430,7 @@ Output includes total count, list of enabled feature names, and last updated tim
 | `AUTHPROVIDER_EXTERNALOAUTHIDP` | External OAuth identity provider                                              |
 | `PHYSNA_ADDON`                  | Physna add-on frontend features                                               |
 | `MIRIS_ADDON`                   | Miris Spatial Streaming add-on viewer                                         |
+| `MIRIS_UPLOAD`                  | Miris Spatial Streaming add-on upload pipeline                                |
 | `DEADLINECLOUD_PIPELINES`       | AWS Deadline Cloud pipeline execution type                                    |
 
 ---

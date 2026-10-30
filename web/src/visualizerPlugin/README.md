@@ -322,7 +322,7 @@ All plugin behavior is defined in `viewerConfig.json`:
 -   **Feature restriction**: `MIRIS_ADDON` (set when `app.addons.useMirisStreaming.enabled` is `true`) and `ALLOWUNSAFEEVAL`
 -   **Enabled**: false (disabled by default)
 -   **Note**: Enable it with the add-on by setting `"enabled": true` on its entry in the add-on viewer configuration (`config/addonViewerConfig.json`) before running `npm install`, so that the install script bundles the SDK. See `web/customInstalls/miris/README.md`.
--   **Note**: A file not yet streamed shows guidance that names the Needle USD viewer and the file's `miris_asset_uuid` metadata. The browser needs WebGL 2.0; some Miris assets need WebGPU.
+-   **Note**: A file not yet streamed shows guidance that names the Needle USD viewer and the **Miris Spatial Streaming Upload** workflow, with a **Stream with Miris** button that starts that workflow for a user whose role may run workflows, when the deployment includes the upload pipeline (`MIRIS_UPLOAD`, set when `app.addons.useMirisStreaming.upload.enabled` is `true`). The browser needs WebGL 2.0; some Miris assets need WebGPU.
 
 ### 21. ThreeJSViewerPlugin
 

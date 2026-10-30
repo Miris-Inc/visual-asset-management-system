@@ -134,7 +134,7 @@ Some viewer plugins and processing pipelines require separate commercial license
 
 ### Miris Spatial Streaming Notice
 
-Miris Spatial Streaming is a commercial service on the public internet. The optional [Miris Spatial Streaming add-on](../developer/miris-spatial-streaming.md) streams assets from it, so enabling it sends data to Miris and requires a Miris account subject to the Miris terms of service. The add-on's viewer uses the Miris web SDK (`@miris-inc/components`, `@miris-inc/three`, `@miris-inc/core`, Apache-2.0) with Three.js (MIT), which the web application's Miris custom install (`web/customInstalls/miris/`) bundles only when the viewer is enabled, as the VNTANA and Veerum viewer installs do for their packages.
+Miris Spatial Streaming is a commercial service on the public internet. The optional [Miris Spatial Streaming add-on](../developer/miris-spatial-streaming.md) streams assets from it, and the optional [Miris Upload pipeline](../pipelines/miris-upload.md) uploads USD assets to it, so enabling either sends data to Miris and requires a Miris account subject to the Miris terms of service. The add-on's viewer uses the Miris web SDK (`@miris-inc/components`, `@miris-inc/three`, `@miris-inc/core`, Apache-2.0) with Three.js (MIT), which the web application's Miris custom install (`web/customInstalls/miris/`) bundles only when the viewer is enabled, as the VNTANA and Veerum viewer installs do for their packages. The upload pipeline container is built on the `python:3.12-slim` image and installs `usd-core` (OpenUSD, TOST-1.0, which is Apache-2.0 with a different Section 6), `requests`, `boto3`, and `botocore` (Apache-2.0); the exact versions are in the repository's `NOTICE.md`.
 
 ### NVIDIA License Notices
 

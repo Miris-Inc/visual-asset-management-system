@@ -205,6 +205,7 @@ Private and public subnets are created when any of the following are enabled:
 -   NVIDIA Gr00t pipeline
 -   Image to 3D pipeline
 -   GenAI CAD STEP agent pipeline on its `fargate` runtime (the `agentcore` runtime runs outside the VPC)
+-   Miris Upload pipeline (`app.addons.useMirisStreaming.upload`)
 
 ### Availability Zone Configuration
 
@@ -288,6 +289,8 @@ The Physna Sync add-on (`app.addons.usePhysnaSync.enabled`) calls the Physna sof
 
 :::warning[The Miris Spatial Streaming add-on requires VPC egress]
 The Miris Spatial Streaming add-on (`app.addons.useMirisStreaming.enabled`) calls the Miris API at `*.miris.com` over the public internet from its status, viewer key, and cleanup Lambda functions, in both viewer key modes. As with the Physna Sync add-on, the AWS Secrets Manager endpoint covers the Integration Key retrieval, but nothing in the isolated subnets reaches Miris: with `useGlobalVpc.useForAllLambdas = true` every Miris call fails, the status route reports `unknown`, and the viewer key route answers `502` or `504`. Enable the add-on with `useForAllLambdas = false`, or in an imported VPC whose isolated subnets have a NAT gateway route. Configuration validation does not reject the combination.
+
+The Miris Upload pipeline does not share this limitation: its AWS Batch jobs always run in the private subnets and reach Miris through the NAT gateway. Its Lambda functions call only AWS services.
 :::
 
 ### Conditional Interface Endpoints
