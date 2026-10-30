@@ -386,6 +386,14 @@
                 "credentialsSecretArn": "",
                 "clientId": "",
                 "clientSecret": ""
+            },
+            "useMirisStreaming": {
+                "enabled": false,
+                "viewerKeyMode": "static",
+                "viewerKey": "",
+                "viewerKeyTtlMinutes": 15,
+                "apiKeySecretArn": "",
+                "mirisApiBaseUrl": "https://app.miris.com"
             }
         },
         "authProvider": {

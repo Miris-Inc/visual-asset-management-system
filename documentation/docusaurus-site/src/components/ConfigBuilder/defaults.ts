@@ -398,6 +398,14 @@ const COMMERCIAL: ConfigShape = {
                 clientId: "",
                 clientSecret: "",
             },
+            useMirisStreaming: {
+                enabled: false,
+                viewerKeyMode: "static",
+                viewerKey: "",
+                viewerKeyTtlMinutes: 15,
+                apiKeySecretArn: "",
+                mirisApiBaseUrl: "https://app.miris.com",
+            },
         },
         authProvider: {
             presignedUrlTimeoutSeconds: 86400,

@@ -493,6 +493,36 @@ function resolveConfigBool(name: string, ...sources: unknown[]): boolean {
     return false;
 }
 
+/** Viewer key modes accepted by `app.addons.useMirisStreaming.viewerKeyMode`. */
+const MIRIS_VIEWER_KEY_MODES: readonly string[] = ["static", "perView"];
+
+/** Shortest value accepted as `app.addons.useMirisStreaming.viewerKey`. */
+const MIRIS_VIEWER_KEY_MIN_LENGTH = 16;
+
+/**
+ * A complete Secrets Manager secret ARN in the commercial partition, the only one the Miris add-on
+ * deploys to, including the six-character suffix Secrets Manager appends to the secret name. IAM
+ * grants name `app.addons.useMirisStreaming.apiKeySecretArn` verbatim, so a partial ARN without the
+ * suffix matches no secret.
+ */
+const MIRIS_SECRET_ARN_PATTERN =
+    /^arn:aws:secretsmanager:[a-z0-9-]+:\d{12}:secret:[A-Za-z0-9/_+=.@-]+-[A-Za-z0-9]{6}$/;
+
+/** Defaults for `app.addons.useMirisStreaming`, each applied when its own field is absent. */
+const MIRIS_STREAMING_DEFAULTS: ConfigPublic["app"]["addons"]["useMirisStreaming"] = {
+    enabled: false,
+    viewerKeyMode: "static",
+    viewerKey: "",
+    viewerKeyTtlMinutes: 15,
+    apiKeySecretArn: "",
+    mirisApiBaseUrl: "https://app.miris.com",
+};
+
+/** A string setting the operator left unset: missing, empty, or the template placeholder. */
+function isUnsetConfigString(value: unknown): boolean {
+    return value === undefined || value === null || value === "" || value === "UNDEFINED";
+}
+
 /**
  * Requires a configured outbound endpoint to be HTTPS and to point somewhere outside the deployment.
  *
@@ -1383,6 +1413,16 @@ export function getConfig(app: cdk.App): Config {
     }
     if (config.app.addons.usePhysnaSync.credentialsSecretArn == undefined) {
         config.app.addons.usePhysnaSync.credentialsSecretArn = "";
+    }
+
+    if (config.app.addons.useMirisStreaming == undefined) {
+        config.app.addons.useMirisStreaming = { ...MIRIS_STREAMING_DEFAULTS };
+    }
+    const mirisStreaming: Record<string, unknown> = config.app.addons.useMirisStreaming;
+    for (const [field, value] of Object.entries(MIRIS_STREAMING_DEFAULTS)) {
+        if (mirisStreaming[field] == undefined) {
+            mirisStreaming[field] = value;
+        }
     }
 
     if (config.app.authProvider.useCognito.useOidc == undefined) {
@@ -3955,6 +3995,127 @@ export function getConfig(app: cdk.App): Config {
         }
     }
 
+    // Miris Spatial Streaming add-on validation
+    if (config.app.addons.useMirisStreaming.enabled) {
+        const miris = config.app.addons.useMirisStreaming;
+
+        // Miris is a SaaS service reached at *.miris.com over the public internet. Keyed on the
+        // resolved partition, so a GovCloud or EU Sovereign Cloud deployment is rejected whatever
+        // app.govCloud.enabled says.
+        if (config.env.partition !== "aws") {
+            throw new Error(
+                "Configuration Error: addons.useMirisStreaming is enabled while deploying to the " +
+                    `'${config.env.partition}' partition. Miris is reached at *.miris.com over the ` +
+                    "public internet and is supported in the commercial partition only. Set " +
+                    "app.addons.useMirisStreaming.enabled to false."
+            );
+        }
+
+        if (!config.app.webUi.allowUnsafeEvalFeatures) {
+            throw new Error(
+                "Configuration Error: addons.useMirisStreaming requires " +
+                    "app.webUi.allowUnsafeEvalFeatures = true. The Miris web SDK compiles code at " +
+                    "runtime, the same trust boundary the Cesium and Needle USD viewer plugins " +
+                    "require. Consult your security team before enabling."
+            );
+        }
+
+        if (!MIRIS_VIEWER_KEY_MODES.includes(miris.viewerKeyMode)) {
+            throw new Error(
+                "Configuration Error: addons.useMirisStreaming.viewerKeyMode must be one of " +
+                    `${MIRIS_VIEWER_KEY_MODES.map((mode) => `"${mode}"`).join(", ")}; got ` +
+                    `${JSON.stringify(miris.viewerKeyMode)}.`
+            );
+        }
+
+        const viewerKeyTtlMinutes: unknown = miris.viewerKeyTtlMinutes;
+        if (
+            typeof viewerKeyTtlMinutes !== "number" ||
+            !Number.isInteger(viewerKeyTtlMinutes) ||
+            viewerKeyTtlMinutes < 1 ||
+            viewerKeyTtlMinutes > 60
+        ) {
+            throw new Error(
+                "Configuration Error: addons.useMirisStreaming.viewerKeyTtlMinutes must be a whole " +
+                    `number of minutes from 1 to 60; got ${JSON.stringify(viewerKeyTtlMinutes)}.`
+            );
+        }
+
+        // The add-on's Lambdas send the Integration Key to this URL.
+        if (isUnsetConfigString(miris.mirisApiBaseUrl)) {
+            throw new Error(
+                "Configuration Error: addons.useMirisStreaming requires mirisApiBaseUrl when enabled"
+            );
+        }
+        if (String(miris.mirisApiBaseUrl) !== String(miris.mirisApiBaseUrl).trim()) {
+            throw new Error(
+                "Configuration Error: addons.useMirisStreaming.mirisApiBaseUrl has leading or " +
+                    `trailing whitespace. Remove it. Got: ${JSON.stringify(miris.mirisApiBaseUrl)}`
+            );
+        }
+        try {
+            new URL(miris.mirisApiBaseUrl);
+        } catch (e) {
+            throw new Error(
+                "Configuration Error: addons.useMirisStreaming.mirisApiBaseUrl must be a valid URL. " +
+                    `Got: ${miris.mirisApiBaseUrl}`
+            );
+        }
+        validateOutboundHttpsEndpoint(
+            miris.mirisApiBaseUrl,
+            "addons.useMirisStreaming.mirisApiBaseUrl"
+        );
+
+        // The Integration Key is read in both viewer key modes: the viewer key endpoint checks the
+        // Miris asset's tags with it before returning a key, and perView mode also mints keys with it.
+        if (isUnsetConfigString(miris.apiKeySecretArn)) {
+            throw new Error(
+                "Configuration Error: addons.useMirisStreaming requires apiKeySecretArn, the Secrets " +
+                    "Manager ARN of the Miris Integration Key. The viewer key endpoint uses it to " +
+                    "check that a Miris asset is bound to the VAMS asset in both viewer key modes."
+            );
+        }
+        if (!MIRIS_SECRET_ARN_PATTERN.test(String(miris.apiKeySecretArn))) {
+            throw new Error(
+                "Configuration Error: addons.useMirisStreaming.apiKeySecretArn must be the complete " +
+                    "ARN of a Secrets Manager secret, including the six-character suffix Secrets " +
+                    "Manager appends to the secret name " +
+                    "in the commercial partition " +
+                    "(arn:aws:secretsmanager:<region>:<account>:secret:<name>-AbCdEf); got " +
+                    `"${miris.apiKeySecretArn}".`
+            );
+        }
+
+        if (miris.viewerKeyMode === "static") {
+            if (isUnsetConfigString(miris.viewerKey) || String(miris.viewerKey).trim() === "") {
+                throw new Error(
+                    'Configuration Error: addons.useMirisStreaming.viewerKeyMode "static" requires ' +
+                        "viewerKey. Generate one in the Miris Portal or with `miris viewerkey create`."
+                );
+            }
+            if (String(miris.viewerKey) !== String(miris.viewerKey).trim()) {
+                throw new Error(
+                    "Configuration Error: addons.useMirisStreaming.viewerKey has leading or trailing " +
+                        "whitespace. Remove it; a Miris viewer key contains none."
+                );
+            }
+            const viewerKeyLength = String(miris.viewerKey).length;
+            if (viewerKeyLength < MIRIS_VIEWER_KEY_MIN_LENGTH) {
+                throw new Error(
+                    `Configuration Error: addons.useMirisStreaming.viewerKey is ${viewerKeyLength} ` +
+                        `characters long; a Miris viewer key is at least ` +
+                        `${MIRIS_VIEWER_KEY_MIN_LENGTH}. Check that the whole key was copied; Miris ` +
+                        "shows it only once at creation."
+                );
+            }
+        } else if (!isUnsetConfigString(miris.viewerKey)) {
+            console.warn(
+                "Configuration Warning: addons.useMirisStreaming.viewerKey is ignored when " +
+                    'viewerKeyMode is "perView". Remove it from config.json.'
+            );
+        }
+    }
+
     return config;
 }
 
@@ -4928,6 +5089,14 @@ export interface ConfigPublic {
                 credentialsSecretArn: string;
                 clientId: string;
                 clientSecret: string;
+            };
+            useMirisStreaming: {
+                enabled: boolean;
+                viewerKeyMode: "static" | "perView";
+                viewerKey: string;
+                viewerKeyTtlMinutes: number;
+                apiKeySecretArn: string;
+                mirisApiBaseUrl: string;
             };
         };
         authProvider: {
