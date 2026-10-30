@@ -14,7 +14,7 @@ tools/VamsCLI/
 │   ├── main.py              # CLI entry point with global options
 │   ├── version.py           # Version management
 │   ├── constants.py         # ALL API endpoints and configuration constants (re-exports addon_constants)
-│   ├── addon_constants.py   # Add-on FEATURE_* names (FEATURE_PHYSNA_ADDON), mirrors infra/common/addonAppFeatures.ts
+│   ├── addon_constants.py   # Add-on FEATURE_* names (FEATURE_PHYSNA_ADDON, FEATURE_MIRIS_ADDON), mirrors infra/common/addonAppFeatures.ts
 │   ├── custom_constants.py  # FORK EXTENSION POINT: a fork's API_* paths + FEATURE_CUSTOM_* (shipped empty)
 │   ├── auth/                # Authentication providers
 │   │   ├── __init__.py
@@ -237,7 +237,7 @@ def call_login_profile(self, user_id: str):
 
 #### **Fork Extension Points (commands, client methods, MCP tools)**
 
-An add-on is optional, upstream-maintained code enabled by configuration: it either integrates VAMS with an external solution deployed and run separately (Garnet Framework, Physna), supplying the VAMS-side components, or is a stand-alone non-core component that VAMS deploys in full when enabled (the licensed VNTANA and VEERUM viewers). Custom is fork code, which upstream ships empty. Upstream adding an integration with an external solution uses the add-on lane; a fork uses the custom lane. Definition and current add-ons: `documentation/docusaurus-site/docs/developer/addons-overview.md`.
+An add-on is optional, upstream-maintained code enabled by configuration: it either integrates VAMS with an external solution deployed and run separately (Garnet Framework, Miris Spatial Streaming, Physna), supplying the VAMS-side components, or is a stand-alone non-core component that VAMS deploys in full when enabled (the licensed VNTANA and VEERUM viewers). Custom is fork code, which upstream ships empty. Upstream adding an integration with an external solution uses the add-on lane; a fork uses the custom lane. Definition and current add-ons: `documentation/docusaurus-site/docs/developer/addons-overview.md`.
 
 A fork adds CLI commands and MCP tools without editing `main.py`, `constants.py`, `utils/api_client.py` or `tools/VamsMCP/vams_mcp/server.py`. Each splices in a fork-owned file that upstream ships empty and never edits:
 

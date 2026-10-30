@@ -27,7 +27,7 @@ tools/VamsCLI/
     main.py                  # CLI entry point, @click.group, command registration (+ CUSTOM_COMMANDS)
     version.py               # __version__ and CLI_VERSION
     constants.py             # All API endpoints, limits, config constants (re-exports addon_constants)
-    addon_constants.py       # Add-on FEATURE_* names (FEATURE_PHYSNA_ADDON), mirrors infra/common/addonAppFeatures.ts
+    addon_constants.py       # Add-on FEATURE_* names (FEATURE_PHYSNA_ADDON, FEATURE_MIRIS_ADDON), mirrors infra/common/addonAppFeatures.ts
     custom_constants.py      # FORK EXTENSION POINT: a fork's API_* paths + FEATURE_CUSTOM_* (shipped empty)
     auth/
       base.py                # BaseAuthenticator abstract class
@@ -835,7 +835,7 @@ Follow this checklist:
 
 ### Adding Commands in a Fork
 
-An add-on is optional, upstream-maintained code enabled by configuration: it either integrates VAMS with an external solution deployed and run separately (Garnet Framework, Physna), supplying the VAMS-side components, or is a stand-alone non-core component that VAMS deploys in full when enabled (the licensed VNTANA and VEERUM viewers). Custom is fork code, which upstream ships empty. Upstream adding an integration with an external solution uses the add-on lane; a fork uses the custom lane. Definition and current add-ons: `documentation/docusaurus-site/docs/developer/addons-overview.md`.
+An add-on is optional, upstream-maintained code enabled by configuration: it either integrates VAMS with an external solution deployed and run separately (Garnet Framework, Miris Spatial Streaming, Physna), supplying the VAMS-side components, or is a stand-alone non-core component that VAMS deploys in full when enabled (the licensed VNTANA and VEERUM viewers). Custom is fork code, which upstream ships empty. Upstream adding an integration with an external solution uses the add-on lane; a fork uses the custom lane. Definition and current add-ons: `documentation/docusaurus-site/docs/developer/addons-overview.md`.
 
 A fork adds commands without editing `main.py`, `constants.py` or `utils/api_client.py`; each splices in a fork-owned file that upstream ships empty and never edits:
 
@@ -1103,6 +1103,7 @@ constant is a gate no command can name, and an extra one names a gate no deploym
 | `FEATURE_AUTHPROVIDER_COGNITO_OIDC`           | `"AUTHPROVIDER_COGNITO_OIDC"`     | Cognito OIDC auth        |
 | `FEATURE_AUTHPROVIDER_EXTERNALOAUTHIDP`       | `"AUTHPROVIDER_EXTERNALOAUTHIDP"` | External OAuth IDP       |
 | `FEATURE_PHYSNA_ADDON` (`addon_constants.py`) | `"PHYSNA_ADDON"`                  | Physna add-on features   |
+| `FEATURE_MIRIS_ADDON` (`addon_constants.py`)  | `"MIRIS_ADDON"`                   | Miris streaming add-on   |
 | `FEATURE_DEADLINECLOUD_PIPELINES`             | `"DEADLINECLOUD_PIPELINES"`       | Deadline Cloud exec type |
 
 ---

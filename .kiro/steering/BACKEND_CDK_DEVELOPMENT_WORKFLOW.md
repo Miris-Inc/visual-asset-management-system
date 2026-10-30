@@ -21,13 +21,13 @@ backend/
 │   ├── models/                 # Pydantic request/response models
 │   │   ├── assetsV3.py        # Asset API models (GOLD STANDARD)
 │   │   ├── common.py          # Common response models
-│   │   ├── addon/             # Add-on models (physnaViewer.py)
+│   │   ├── addon/             # Add-on models (physnaViewer.py, miris.py)
 │   │   ├── custom/            # FORK EXTENSION POINT: fork models (shipped empty)
 │   │   └── [domain].py        # Domain-specific models
 │   ├── common/                # Shared utilities
 │   │   ├── constants.py       # Constants and configuration (object types, fields, blocklists: core + add-on + custom)
 │   │   ├── addonConstants.py  # Add-on object types, constraint fields, blocklist entries (shipped empty)
-│   │   ├── addonResourceNames.py  # Add-on resource-name keys (AddonResourceKeys, shipped empty)
+│   │   ├── addonResourceNames.py  # Add-on resource-name keys (AddonResourceKeys: MIRIS_VIEWER_KEY_STORAGE_TABLE)
 │   │   ├── validators.py      # Input validation functions
 │   │   └── dynamodb.py        # DynamoDB utilities (query_all_items, query_has_match, batch_get_items, …)
 │   ├── custom/                # FORK EXTENSION POINT: customApiRoutes.py, customResourceNames.py, customConstants.py
@@ -76,12 +76,12 @@ One folder per domain. The current domains:
 -   `tagTypes/` — Tag type management
 -   `userRoles/` — User-role assignment
 -   `workflows/` — Step Functions workflow management (Pydantic models, builder pattern for ASL generation: Lambda/SQS/EventBridge/DeadlineCloud task states; `sfn/deadlineCloudJobCallback` resolves Deadline Cloud job task tokens from default-bus events)
--   `addon/` — Add-on integrations (`garnetFramework/` Garnet NGSI-LD indexer Lambdas; `physna/` Physna Sync Lambdas: physnaFileSync, physnaAssetSync, physnaViewer; physnaCommon.py holds shared client/auth helpers)
+-   `addon/` — Add-on integrations (`garnetFramework/` Garnet NGSI-LD indexer Lambdas; `miris/` Miris Spatial Streaming Lambdas: getAssetStatus (`GET /addon/miris/asset-status`), mintViewerKey (`POST /addon/miris/viewer-key`), viewerKeyCleanup (deletes expired per-view keys from Miris); mirisIntegration.py and streamMetadata.py hold the shared Miris client and stream-metadata reader; `physna/` Physna Sync Lambdas: physnaFileSync, physnaAssetSync, physnaViewer; physnaCommon.py holds shared client/auth helpers)
 -   `custom/` — Fork extension point: handlers a fork adds (`handlers.custom.<name>.lambda_handler`); shipped empty
 
 #### **Fork Extension Points (backend + CDK)**
 
-An add-on is optional, upstream-maintained code enabled by configuration: it either integrates VAMS with an external solution deployed and run separately (Garnet Framework, Physna), supplying the VAMS-side components, or is a stand-alone non-core component that VAMS deploys in full when enabled (the licensed VNTANA and VEERUM viewers). Custom is fork code, which upstream ships empty. Upstream adding an integration with an external solution uses the add-on lane; a fork uses the custom lane. Definition and current add-ons: `documentation/docusaurus-site/docs/developer/addons-overview.md`.
+An add-on is optional, upstream-maintained code enabled by configuration: it either integrates VAMS with an external solution deployed and run separately (Garnet Framework, Miris Spatial Streaming, Physna), supplying the VAMS-side components, or is a stand-alone non-core component that VAMS deploys in full when enabled (the licensed VNTANA and VEERUM viewers). Custom is fork code, which upstream ships empty. Upstream adding an integration with an external solution uses the add-on lane; a fork uses the custom lane. Definition and current add-ons: `documentation/docusaurus-site/docs/developer/addons-overview.md`.
 
 Every list VAMS aggregates is `core + add-on + custom`. The custom part is fork-owned: upstream ships it empty and never edits it, so a fork adds net-new endpoints and resources without conflicting on upgrade. Each such file opens with the "Fork extension point" header. Full walkthrough: `documentation/docusaurus-site/docs/developer/customizing-vams.md`.
 
@@ -185,7 +185,7 @@ A workflow's Step Functions definition encodes each referenced pipeline's execut
 -   [ ] **Mock AWS Services**: Use proper mocking for DynamoDB, S3, SNS
 -   [ ] **Run All Tests**: Ensure `pytest` passes with coverage
 
-The add-on and custom lane modules (`common/addonConstants.py`, `common/addonResourceNames.py`, `custom/`) are pure data and need no mock under `tests/mocks/`. `common` is a `MagicMock` in `tests/conftest.py`, so the conftests register `common.addonConstants` in `sys.modules` by path before `constants.py` loads. A test that needs populated lanes loads a private copy of `constants.py` with stand-in lane modules (`tests/common/test_constants_extension_lanes.py`). Tests that pin the constraint lists pin the `CORE_*` lists, so they hold in a fork that fills the lanes.
+The add-on and custom lane modules (`common/addonConstants.py`, `common/addonResourceNames.py`, `custom/`) are pure data and need no mock under `tests/mocks/`. `common` is a `MagicMock` in `tests/conftest.py`, so the conftests register `common.addonConstants` in `sys.modules` by path before `constants.py` loads, and `tests/conftest.py` registers `common.addonResourceNames` the same way, because add-on handlers import it at module load. A test that needs populated lanes loads a private copy of `constants.py` with stand-in lane modules (`tests/common/test_constants_extension_lanes.py`). Tests that pin the constraint lists pin the `CORE_*` lists, so they hold in a fork that fills the lanes.
 
 #### **Step 6: Frontend Integration**
 
@@ -1104,7 +1104,7 @@ return {
 
 ### **Rule 6: API Routes MUST Be Registered in an apiBuilder Nested Stack**
 
-Prefer `apiBuilder2-nestedStack.ts` for new endpoints. Place a function in `apiBuilder` only when it must share a directly-referenced function instance defined there. `attachFunctionToApi` records a descriptor in the cross-stack `RouteRegistry` (passed as `registry`) and creates no API resource itself; the API implementation, built last, renders the whole registry into one OpenAPI document. Registering the same method + path twice throws at synth. This rule governs core endpoints. `apiBuilder-nestedStack.ts` and `apiBuilder2-nestedStack.ts` hold most routes, but a feature stack registers the routes of the Lambdas it builds into the same registry: `searchBuilder-nestedStack.ts` registers `/search` and `/search/simple`, and add-on stacks such as `physnaSyncBuilder-nestedStack.ts` register theirs only when the add-on is enabled. A fork registers its routes from `infra/lib/nestedStacks/custom/customResources.ts`, built inside the `CustomBuilder` nested stack, which the REST API stack depends on. `rest-api-gateway-construct.ts` registers the anonymous `/api/amplify-config` and `/api/version` with `registry.register(` directly. `infra/test/api/apiRouteBackendCdkParity.test.ts` checks the synthesized routes against `apiRoutes.py` and the route lists it splices in (`addonApiRoutes.py`, `custom/customApiRoutes.py`).
+Prefer `apiBuilder2-nestedStack.ts` for new endpoints. Place a function in `apiBuilder` only when it must share a directly-referenced function instance defined there. `attachFunctionToApi` records a descriptor in the cross-stack `RouteRegistry` (passed as `registry`) and creates no API resource itself; the API implementation, built last, renders the whole registry into one OpenAPI document. Registering the same method + path twice throws at synth. This rule governs core endpoints. `apiBuilder-nestedStack.ts` and `apiBuilder2-nestedStack.ts` hold most routes, but a feature stack registers the routes of the Lambdas it builds into the same registry: `searchBuilder-nestedStack.ts` registers `/search` and `/search/simple`, and add-on stacks such as `physnaSyncBuilder-nestedStack.ts` (`/addon/physna/viewer`) and `mirisBuilder-nestedStack.ts` (`GET /addon/miris/asset-status`, `POST /addon/miris/viewer-key`) register theirs only when the add-on is enabled. A fork registers its routes from `infra/lib/nestedStacks/custom/customResources.ts`, built inside the `CustomBuilder` nested stack, which the REST API stack depends on. `rest-api-gateway-construct.ts` registers the anonymous `/api/amplify-config` and `/api/version` with `registry.register(` directly. `infra/test/api/apiRouteBackendCdkParity.test.ts` checks the synthesized routes against `apiRoutes.py` and the route lists it splices in (`addonApiRoutes.py`, `custom/customApiRoutes.py`).
 
 **Do not consolidate the two API stacks.** They stay split so each carries its own budget against the two per-template CloudFormation ceilings — 500 resources and a 1 MB template body, neither adjustable. In the commercial template `apiBuilder` emits 108 resources in a ~0.48 MB template and `apiBuilder2` emits 81 in ~0.33 MB, so body size fills well ahead of resource count and is what the split buys headroom against.
 

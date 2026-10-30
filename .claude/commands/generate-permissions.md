@@ -238,7 +238,7 @@ Write paths (POST/PUT for editors/admins): `/uploads`, `/ingest-asset` (admin on
 
 Non-mutating POST paths (needed by all roles including read-only): `/auth/routes`, `/search`, `/check-subscription`, and the file download (`starts_with /database/` + `ends_with /download`, in one constraint's `criteriaAnd`)
 
-Add-on paths (GET; each is deployed only when its add-on is enabled, and a criterion for an undeployed route matches nothing): `/addon/physna/viewer` (the Physna viewer plugin; granted by every shipped template whose role views files)
+Add-on paths (each is deployed only when its add-on is enabled, and a criterion for an undeployed route matches nothing; granted by every shipped template whose role views files): `/addon/physna/viewer` (GET, the Physna viewer plugin), and `/addon/miris/asset-status` (GET) and `/addon/miris/viewer-key` (POST) for the Miris Spatial Streaming viewer. `/addon/miris/viewer-key` reads: it returns a viewer key for a file the caller may read, so read-only roles get it as an `equals` criterion in their POST constraint, like the seeded `basicReadOnly` role.
 
 Admin paths: `/roles`, `/user-roles`, `/auth/constraints`, `/user/cognito`
 
