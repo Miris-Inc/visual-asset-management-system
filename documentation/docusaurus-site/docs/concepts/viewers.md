@@ -2,13 +2,14 @@
 
 VAMS includes a plugin-based viewer system that enables browser-based visualization of 3D models, point clouds, media files, documents, and data -- without requiring desktop software or specialized licenses. This page is the single source of truth for all built-in viewers and their supported file extensions.
 
-VAMS ships **21 built-in viewer plugins** across five categories. Fourteen are available in every deployment. The remaining seven are conditional:
+VAMS ships **22 built-in viewer plugins** across five categories. Fourteen are available in every deployment. The remaining eight are conditional:
 
 -   **Two licensed viewers** — VNTANA and VEERUM, both [add-ons](../developer/addons-overview.md) — ship disabled and require both a vendor license and enabling them in the viewer configuration.
 -   **Four viewers require `app.webUi.allowUnsafeEvalFeatures`** — Needle USD, the SuperSplat Editor, ThatOpen IFC BIM, and the Robotics Data Viewer. Their loaders use `eval`, so VAMS does not offer them at all when a deployment has not enabled that setting.
 -   **The Physna Viewer** appears only when the Physna Sync add-on is enabled.
+-   **The Miris Spatial Streaming viewer** appears only when the Miris Spatial Streaming add-on is enabled, which also requires `app.webUi.allowUnsafeEvalFeatures`.
 
-The [master viewer table](#master-viewer-table) lists all 21; any other page quoting a viewer count is checked against this one.
+The [master viewer table](#master-viewer-table) lists all 22; any other page quoting a viewer count is checked against this one.
 
 ## What are file viewers
 
@@ -21,7 +22,7 @@ The viewer system is built on a **plugin architecture**. Each viewer is an indep
 1. VAMS reads the file extension (e.g., `.glb`, `.e57`, `.pdf`).
 2. All enabled viewers that support that extension are identified.
 3. If exactly one viewer matches, VAMS opens the file in it.
-4. If multiple viewers match, the dropdown lists them with the **lowest priority number** first, and VAMS loads none of them until you choose one. You can then switch between them from the same dropdown.
+4. If multiple viewers match, the dropdown lists them with the **lowest priority number** first, and VAMS loads none of them until you choose one. You can then switch between them from the same dropdown. The exception is a viewer whose configuration sets `autoSelect`: when it is the only match at the lowest priority, VAMS opens the file in it outside compare mode, and the other matches stay in the dropdown. The Miris Spatial Streaming viewer is the one viewer that sets it.
 5. If the file has a preview image, the file page also offers a **Preview** option that shows the image in the **Preview Viewer**, including for a file whose extension no viewer matches.
 
 ---
@@ -70,6 +71,7 @@ This table is the definitive reference for all built-in viewer plugins.
 | **VNTANA 3D Viewer**                  | 3D       | `.glb`                                                                                                                                                                           | 2        | No         | Licensed viewer for high-quality GLB rendering. See [Licensed viewers](#licensed-viewers).                                                                                                                                                                                                                                                                                                        |
 | **VEERUM 3D Viewer**                  | 3D       | `.e57`, `.las`, `.laz`, `.ply`, `.json`                                                                                                                                          | 2        | Yes        | Licensed viewer for point clouds and 3D tilesets. Requires Potree pipeline. Shows latest version only. See [Licensed viewers](#licensed-viewers).                                                                                                                                                                                                                                                 |
 | **Physna Viewer**                     | 3D       | `.3ds`, `.asm`, `.catpart`, `.catproduct`, `.glb`, `.iam`, `.iges`, `.igs`, `.ipt`, `.jt`, `.obj`, `.par`, `.prt`, `.sldasm`, `.sldprt`, `.stl`, `.step`, `.stp`, `.x_b`, `.x_t` | 5        | No         | Embeds the Physna-hosted 3D/CAD viewer through a VAMS authorization proxy. Requires the Physna Sync add-on. See [Add-on viewers](#add-on-viewers).                                                                                                                                                                                                                                                |
+| **Miris Spatial Streaming**           | 3D       | `.usd`, `.usda`, `.usdc`, `.usdz`                                                                                                                                                | 0        | No         | Streams the Miris asset recorded in the USD file's metadata from Miris. Opens automatically for USD files (`autoSelect`). Requires the Miris Spatial Streaming add-on and `ALLOWUNSAFEEVAL`. See [Add-on viewers](#add-on-viewers).                                                                                                                                                               |
 | **Image Viewer**                      | Media    | `.png`, `.jpg`, `.jpeg`, `.svg`, `.gif`                                                                                                                                          | 1        | No         | Image fitted to the viewer panel. Loads on first use, like every viewer.                                                                                                                                                                                                                                                                                                                          |
 | **Video Player**                      | Media    | `.mp4`, `.webm`, `.mov`, `.mkv`, `.m4v`                                                                                                                                          | 1        | No         | Standard browser-native playback controls.                                                                                                                                                                                                                                                                                                                                                        |
 | **Audio Player**                      | Media    | `.mp3`, `.wav`, `.ogg`, `.aac`, `.flac`, `.m4a`                                                                                                                                  | 1        | No         | Standard browser-native playback controls.                                                                                                                                                                                                                                                                                                                                                        |
@@ -110,7 +112,7 @@ This table provides a quick lookup from file extension to the viewer(s) that han
 | `.stl`           | Three.js Viewer         | --                      |
 | `.wrl`           | Online 3D Viewer        | --                      |
 
-The tables in this section list the viewers available in every deployment. The Physna Viewer adds a further set of proprietary CAD formats -- `.asm`, `.catpart`, `.catproduct`, `.iam`, `.ipt`, `.jt`, `.par`, `.prt`, `.sldasm`, `.sldprt`, `.x_b`, `.x_t` -- and becomes an additional choice for several of the formats above, but only on a deployment with the Physna Sync add-on enabled. See [Add-on viewers](#add-on-viewers).
+The tables in this section list the viewers available in every deployment. The Physna Viewer adds a further set of proprietary CAD formats -- `.asm`, `.catpart`, `.catproduct`, `.iam`, `.ipt`, `.jt`, `.par`, `.prt`, `.sldasm`, `.sldprt`, `.x_b`, `.x_t` -- and becomes an additional choice for several of the formats above, but only on a deployment with the Physna Sync add-on enabled. Likewise, the Miris Spatial Streaming viewer becomes the default viewer for the USD extensions on a deployment with the Miris Spatial Streaming add-on enabled. See [Add-on viewers](#add-on-viewers).
 
 ### Point cloud and Gaussian splat extensions
 
@@ -233,18 +235,21 @@ Several viewers depend on WebAssembly (WASM) modules for rendering. WASM-based v
 
 The following viewers use WASM:
 
-| Viewer                             | WASM Library                                              | Required Feature Flag |
-| ---------------------------------- | --------------------------------------------------------- | --------------------- |
-| Needle USD Viewer (Experimental)   | `usd-wasm`                                                | `ALLOWUNSAFEEVAL`     |
-| Cesium 3D Tileset Viewer           | `@cesium/engine` (draco/KTX2 decoding)                    | None                  |
-| SuperSplat Editor (PlayCanvas)     | PlayCanvas engine (WebGL shader compilation)              | `ALLOWUNSAFEEVAL`     |
-| Three.js Viewer (CAD formats only) | OpenCascade (`opencascade.js`)                            | `ALLOWUNSAFEEVAL`     |
-| ThatOpen IFC BIM Viewer            | `web-ifc` (That Open Engine)                              | `ALLOWUNSAFEEVAL`     |
-| Robotics Data Viewer (Lichtblick)  | Lichtblick (SQLite for `.db3`, decompression for `.mcap`) | `ALLOWUNSAFEEVAL`     |
+| Viewer                             | WASM Library                                                                                                       | Required Feature Flag            |
+| ---------------------------------- | ------------------------------------------------------------------------------------------------------------------ | -------------------------------- |
+| Needle USD Viewer (Experimental)   | `usd-wasm`                                                                                                         | `ALLOWUNSAFEEVAL`                |
+| Cesium 3D Tileset Viewer           | `@cesium/engine` (draco/KTX2 decoding)                                                                             | None                             |
+| SuperSplat Editor (PlayCanvas)     | PlayCanvas engine (WebGL shader compilation)                                                                       | `ALLOWUNSAFEEVAL`                |
+| Three.js Viewer (CAD formats only) | OpenCascade (`opencascade.js`)                                                                                     | `ALLOWUNSAFEEVAL`                |
+| ThatOpen IFC BIM Viewer            | `web-ifc` (That Open Engine)                                                                                       | `ALLOWUNSAFEEVAL`                |
+| Robotics Data Viewer (Lichtblick)  | Lichtblick (SQLite for `.db3`, decompression for `.mcap`)                                                          | `ALLOWUNSAFEEVAL`                |
+| Miris Spatial Streaming            | Miris web SDK (`AquaApi.wasm`, `aqua-parser.wasm`, `webshark.wasm`, `spark_rs_bg.wasm`, `spark_worker_rs_bg.wasm`) | `MIRIS_ADDON`, `ALLOWUNSAFEEVAL` |
 
 :::warning[Content Security Policy]
-Enabling `ALLOWUNSAFEEVAL` adds `unsafe-eval` to the Content Security Policy `script-src` directive. This is required by the SuperSplat Editor, by the Robotics Data Viewer, and by WASM loaders for OpenCascade, Needle USD, and web-ifc (the ThatOpen IFC BIM viewer). Review this setting with your organization's security team before enabling. Set `app.webUi.allowUnsafeEvalFeatures` to `true` in the CDK `config.json` to enable.
+Enabling `ALLOWUNSAFEEVAL` adds `unsafe-eval` to the Content Security Policy `script-src` directive. This is required by the SuperSplat Editor, by the Robotics Data Viewer, by the Miris Spatial Streaming viewer, and by WASM loaders for OpenCascade, Needle USD, and web-ifc (the ThatOpen IFC BIM viewer). Review this setting with your organization's security team before enabling. Set `app.webUi.allowUnsafeEvalFeatures` to `true` in the CDK `config.json` to enable.
 :::
+
+The Miris Spatial Streaming viewer does not use `SharedArrayBuffer`, so it needs no cross-origin isolation; its `.wasm` files load from the web application's own origin.
 
 The Three.js Viewer works without `ALLOWUNSAFEEVAL` for standard mesh formats (`.gltf`, `.glb`, `.obj`, `.fbx`, `.stl`, `.ply`, `.dae`, `.3ds`, `.3mf`). The WASM requirement applies only to CAD formats (`.stp`, `.step`, `.iges`, `.igs`, `.brep`) which use the OpenCascade library.
 
@@ -271,11 +276,14 @@ For more information on partner integrations, see [Partner Integrations](../addi
 
 Some viewers are provided by optional VAMS add-ons and are gated by a feature flag emitted from the backend. They only appear in the viewer selector when the corresponding add-on is enabled in the deployment configuration.
 
-| Viewer            | Vendor                            | Formats                                                                                                                                                                          | Feature flag   | Add-on                                       |
-| ----------------- | --------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------- | -------------------------------------------- |
-| **Physna Viewer** | [Physna](https://www.physna.com/) | `.3ds`, `.asm`, `.catpart`, `.catproduct`, `.glb`, `.iam`, `.iges`, `.igs`, `.ipt`, `.jt`, `.obj`, `.par`, `.prt`, `.sldasm`, `.sldprt`, `.stl`, `.step`, `.stp`, `.x_b`, `.x_t` | `PHYSNA_ADDON` | `app.addons.usePhysnaSync.enabled` is `true` |
+| Viewer                      | Vendor                            | Formats                                                                                                                                                                          | Feature flag                        | Add-on                                                                                    |
+| --------------------------- | --------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------- | ----------------------------------------------------------------------------------------- |
+| **Physna Viewer**           | [Physna](https://www.physna.com/) | `.3ds`, `.asm`, `.catpart`, `.catproduct`, `.glb`, `.iam`, `.iges`, `.igs`, `.ipt`, `.jt`, `.obj`, `.par`, `.prt`, `.sldasm`, `.sldprt`, `.stl`, `.step`, `.stp`, `.x_b`, `.x_t` | `PHYSNA_ADDON`                      | `app.addons.usePhysnaSync.enabled` is `true`                                              |
+| **Miris Spatial Streaming** | [Miris](https://miris.com/)       | `.usd`, `.usda`, `.usdc`, `.usdz`                                                                                                                                                | `MIRIS_ADDON` and `ALLOWUNSAFEEVAL` | `app.addons.useMirisStreaming.enabled` and `app.webUi.allowUnsafeEvalFeatures` are `true` |
 
 The Physna Viewer renders the Physna-hosted 3D/CAD viewer inside VAMS. A VAMS-authorized endpoint applies both authorization tiers and returns a Physna viewer token to the browser, which then loads the viewer directly from Physna; the Physna client credentials stay in AWS Secrets Manager and never reach the browser. That token carries no asset scope, so Physna-hosted viewer access is flat across every synced database. See the [Physna Integration](../developer/physna-integration.md#physna-viewer) developer guide for architecture, configuration, and the side effects of that limitation.
+
+The Miris Spatial Streaming viewer streams USD files from Miris instead of downloading them. It reads the Miris asset recorded in the file's metadata through a VAMS route that applies both authorization tiers, and receives a viewer key from a second route that checks the Miris asset is bound to the VAMS asset. At priority `0` with `autoSelect`, it opens USD files automatically, and the Needle USD Viewer stays in the dropdown. A file that has not been uploaded to Miris shows a note that points to the Needle USD Viewer and to the file's `miris_asset_uuid` metadata, which links the file to a Miris asset. See [Miris Spatial Streaming](../developer/miris-spatial-streaming.md#viewer-plugin).
 
 ---
 

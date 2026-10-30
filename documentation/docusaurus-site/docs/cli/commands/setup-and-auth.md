@@ -429,6 +429,7 @@ Output includes total count, list of enabled feature names, and last updated tim
 | `AUTHPROVIDER_COGNITO_OIDC`     | Amazon Cognito user pool federated to an OIDC identity provider               |
 | `AUTHPROVIDER_EXTERNALOAUTHIDP` | External OAuth identity provider                                              |
 | `PHYSNA_ADDON`                  | Physna add-on frontend features                                               |
+| `MIRIS_ADDON`                   | Miris Spatial Streaming add-on viewer                                         |
 | `DEADLINECLOUD_PIPELINES`       | AWS Deadline Cloud pipeline execution type                                    |
 
 ---

@@ -289,6 +289,7 @@ Configuration values resolve through a four-tier fallback chain:
 | `AUTHPROVIDER_COGNITO_OIDC`     | Amazon Cognito with OIDC federation                                                  |
 | `AUTHPROVIDER_EXTERNALOAUTHIDP` | External OAuth identity provider                                                     |
 | `PHYSNA_ADDON`                  | Physna add-on frontend features enabled                                              |
+| `MIRIS_ADDON`                   | Miris Spatial Streaming add-on enabled                                               |
 | `DEADLINECLOUD_PIPELINES`       | AWS Deadline Cloud pipeline execution type enabled                                   |
 
 ## Nested Stack Dependency Chain

@@ -380,6 +380,7 @@ enum VAMS_APP_FEATURES {
 // common/addonAppFeatures.ts
 enum ADDON_APP_FEATURES {
     PHYSNA_ADDON,
+    MIRIS_ADDON,
 }
 ```
 

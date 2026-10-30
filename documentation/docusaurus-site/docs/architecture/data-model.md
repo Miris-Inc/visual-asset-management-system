@@ -530,6 +530,16 @@ Tags and tag types are database-namespaced. The partition key is the `databaseId
 | AppFeatureEnabledStorageTable | `featureName` | --                                                   |
 | S3AssetBucketsStorageTable    | `bucketId`    | `bucketName:baseAssetsPrefix` (GSI: `bucketNameGSI`) |
 
+### Miris Viewer Key Storage Table (add-on)
+
+Created only by the Miris Spatial Streaming add-on in `perView` mode. One row per viewer key the viewer key route mints; the key material itself is never stored.
+
+| Attribute          | Type   | Key           |
+| ------------------ | ------ | ------------- |
+| `mirisViewerKeyId` | String | Partition Key |
+
+Each row carries `databaseId`, `assetId`, `filePath` (asset-relative), `userId`, `mirisAssetUuid`, `createdAt` and `expiresAt` (RFC 3339 UTC), and `ttl`, the key's expiry plus one hour in epoch seconds. A row is written with a condition that no row with the same key ID exists. The table has no index. Its `KEYS_ONLY` stream feeds the cleanup Lambda function, which acts only on `REMOVE` records written by DynamoDB TTL and deletes the named key from Miris.
+
 ## Amazon S3 Bucket Organization
 
 ### Asset Buckets

@@ -141,7 +141,7 @@ graph TD
     APIBuilder2["ApiBuilder2<br/>(Secondary API Route Wiring)"]
     Search["SearchBuilder<br/>(OpenSearch)"]
     Pipelines["PipelineBuilder<br/>(Processing Pipelines)"]
-    Addons["AddonBuilder<br/>(Garnet Framework, Physna Sync)"]
+    Addons["AddonBuilder<br/>(Garnet Framework, Physna Sync,<br/>Miris Spatial Streaming)"]
     API["RestApi<br/>(SpecRestApi + Authorizer)"]
     StaticWeb["StaticWeb<br/>(CloudFront or ALB, Conditional)"]
     Location["LocationService<br/>(Conditional)"]

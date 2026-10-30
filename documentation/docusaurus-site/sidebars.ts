@@ -115,6 +115,7 @@ const sidebars: SidebarsConfig = {
                         "developer/addons-overview",
                         "developer/garnet-framework",
                         "developer/physna-integration",
+                        "developer/miris-spatial-streaming",
                     ],
                 },
                 {

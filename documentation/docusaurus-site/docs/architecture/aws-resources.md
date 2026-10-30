@@ -4,7 +4,7 @@ This page provides a comprehensive inventory of all AWS resources deployed by VA
 
 ## Amazon DynamoDB Tables
 
-VAMS deploys 54 Amazon DynamoDB tables for persistent data storage — 47 read by Lambda handlers and 7 migration source tables. All tables use on-demand (PAY_PER_REQUEST) billing, point-in-time recovery, and optional AWS KMS customer-managed key encryption.
+VAMS deploys 54 Amazon DynamoDB tables for persistent data storage (47 read by Lambda handlers and 7 migration source tables), plus the conditional add-on tables listed under [Add-on Tables](#add-on-tables). All tables use on-demand (PAY_PER_REQUEST) billing, point-in-time recovery, and optional AWS KMS customer-managed key encryption.
 
 All tables use a `RETAIN` removal policy, so they and their data survive `cdk destroy` and require manual deletion. Because every table is auto-named by AWS CloudFormation (no explicit `tableName`), a retained orphan never collides with the freshly named table a redeploy creates. See [Uninstall the solution — Step 3: Delete DynamoDB tables](../deployment/uninstall.md#step-3-delete-dynamodb-tables) for cleanup steps.
 
@@ -119,6 +119,14 @@ Tags and tag types are database-namespaced: the partition key is the `databaseId
 | AppFeatureEnabledStorageTable | `featureName`      | --                            | Enabled feature flags                                                     |
 | S3AssetBucketsStorageTable    | `bucketId`         | `bucketName:baseAssetsPrefix` | Registered asset bucket records (GSI: `bucketNameGSI`)                    |
 
+### Add-on Tables
+
+| Table                      | Partition Key (PK) | Sort Key (SK) | Streams   | Created when                                                   | Purpose                                                                                                                                                                  |
+| -------------------------- | ------------------ | ------------- | --------- | -------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| MirisViewerKeyStorageTable | `mirisViewerKeyId` | --            | KEYS_ONLY | `app.addons.useMirisStreaming` with `viewerKeyMode: "perView"` | One row per minted Miris viewer key, without the key material. TTL attribute `ttl`; the stream's TTL deletions drive the cleanup Lambda that deletes the key from Miris. |
+
+The add-on table follows the same conventions as the core tables: on-demand billing, point-in-time recovery, the shared AWS KMS key when one is configured, a `RETAIN` removal policy, and an auto-generated name. Its name is published as the SSM parameter `/<name>-<baseStackName>-<region>/resourceNames/addon/miris/viewerKeyStorage`. It is retained when the add-on is disabled or switched back to `static` mode.
+
 ## Amazon S3 Buckets
 
 | Bucket                         | Versioned | CORS | Access Logging                  | Removal on teardown     | Custom name (redeploy collision)     | Purpose                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
@@ -185,6 +193,16 @@ VAMS deploys Lambda functions across builder files. The functions listed in this
 | VAMS Version Lambda (Node.js 22.x, 128 MB, 15-second timeout)   | Serves `/api/version` (unauthenticated)        |
 | Schema Deploy Lambda (Node.js 22.x, 128 MB, 14-minute timeout)  | Custom resource for OpenSearch index creation  |
 | Populate S3 Asset Buckets Lambda (128 MB, 5-minute timeout)     | Custom resource for bucket table population    |
+
+### Add-on Functions
+
+| Function                        | Created when                                     | Timeout    | Purpose                                                                                        |
+| ------------------------------- | ------------------------------------------------ | ---------- | ---------------------------------------------------------------------------------------------- |
+| `MirisGetAssetStatusFunction`   | `app.addons.useMirisStreaming`                   | 30 seconds | Serves `GET /addon/miris/asset-status`                                                         |
+| `MirisMintViewerKeyFunction`    | `app.addons.useMirisStreaming`                   | 30 seconds | Serves `POST /addon/miris/viewer-key`                                                          |
+| `MirisViewerKeyCleanupFunction` | `app.addons.useMirisStreaming` in `perView` mode | 5 minutes  | Reads TTL deletions from the viewer key table's stream and deletes each expired key from Miris |
+
+These functions run in the VPC's isolated subnets when `app.useGlobalVpc.useForAllLambdas` is `true`, which have no route to the Miris API (see [Network Architecture](networking.md)). Their log groups are created by the Lambda service as `/aws/lambda/<functionName>` on first invocation.
 
 On a CloudFront deployment, the StaticWeb nested stack also holds the **API origin verification rotation Lambda** (`apiOriginVerifyRotation`), the AWS Secrets Manager rotation function of the origin verification secret. Every 45 days it writes a new value, sets the regional web ACL's origin verification matches to the new and the previous value, and then points the CloudFront distribution's API origin headers at the new value. The previous value stays accepted until the next rotation, so a value is accepted for at most two rotation intervals (about 90 days). It runs outside the VPC in every configuration, because Amazon CloudFront and AWS WAF have no interface VPC endpoint for their APIs.
 
@@ -259,23 +277,24 @@ The object-created and object-removed topics of an external asset bucket in anot
 
 ## Amazon SQS Queues
 
-| Queue                                 | Purpose                                                                                                                                                         |
-| ------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **WorkflowTriggerDispatchQueue**      | Buffers file-upload trigger events fanned out to workflow executions                                                                                            |
-| **WorkflowTriggerDispatchDLQ**        | Dead-letter queue for trigger events that fail three delivery attempts                                                                                          |
-| **DeadlineCloudJobCallbackDLQ**       | Dead-letter queue for Deadline Cloud job-status events the callback Lambda could not process (conditional on `app.pipelines.deadlineCloudExecutionTypeEnabled`) |
-| **LargeFileProcessingQueue**          | Buffers large multi-part upload finalization work (5-day retention, redrives to LargeFileProcessingDLQ after 3 receives)                                        |
-| **LargeFileProcessingDLQ**            | Dead-letter queue for large-upload finalization work that fails three receives (14-day retention)                                                               |
-| **BucketSyncCreated** (per bucket)    | Processes S3 ObjectCreated events for bucket synchronization                                                                                                    |
-| **BucketSyncCreatedDLQ** (per bucket) | Dead-letter queue for ObjectCreated records that fail three receives (14-day retention, one per bucket)                                                         |
-| **BucketSyncDeleted** (per bucket)    | Processes S3 ObjectRemoved events for bucket synchronization                                                                                                    |
-| **BucketSyncDeletedDLQ** (per bucket) | Dead-letter queue for ObjectRemoved records that fail three receives (14-day retention, one per bucket)                                                         |
-| **File/Asset Indexer Queues**         | Buffer indexing events between Amazon SNS and indexer Lambdas                                                                                                   |
-| **File/Asset Indexer DLQs**           | One per indexer queue. Hold the indexing records the indexer Lambda still could not process after three deliveries                                              |
-| **Physna File/Asset Sync Queues**     | Buffer sync events for the Physna addon (conditional on `app.addons.usePhysnaSync`)                                                                             |
-| **Physna File/Asset Sync DLQs**       | One per Physna sync queue. Hold the sync events the sync Lambda still could not process after three deliveries (conditional on `app.addons.usePhysnaSync`)      |
-| **Garnet File/Asset/Database Queues** | Buffer indexing events for the Garnet Framework addon (conditional on `app.addons.useGarnetFramework`)                                                          |
-| **Garnet File/Asset/Database DLQs**   | One per Garnet indexer queue. Hold the events the indexer Lambda could not process after three deliveries (conditional on `app.addons.useGarnetFramework`)      |
+| Queue                                 | Purpose                                                                                                                                                                                                         |
+| ------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **WorkflowTriggerDispatchQueue**      | Buffers file-upload trigger events fanned out to workflow executions                                                                                                                                            |
+| **WorkflowTriggerDispatchDLQ**        | Dead-letter queue for trigger events that fail three delivery attempts                                                                                                                                          |
+| **DeadlineCloudJobCallbackDLQ**       | Dead-letter queue for Deadline Cloud job-status events the callback Lambda could not process (conditional on `app.pipelines.deadlineCloudExecutionTypeEnabled`)                                                 |
+| **LargeFileProcessingQueue**          | Buffers large multi-part upload finalization work (5-day retention, redrives to LargeFileProcessingDLQ after 3 receives)                                                                                        |
+| **LargeFileProcessingDLQ**            | Dead-letter queue for large-upload finalization work that fails three receives (14-day retention)                                                                                                               |
+| **BucketSyncCreated** (per bucket)    | Processes S3 ObjectCreated events for bucket synchronization                                                                                                                                                    |
+| **BucketSyncCreatedDLQ** (per bucket) | Dead-letter queue for ObjectCreated records that fail three receives (14-day retention, one per bucket)                                                                                                         |
+| **BucketSyncDeleted** (per bucket)    | Processes S3 ObjectRemoved events for bucket synchronization                                                                                                                                                    |
+| **BucketSyncDeletedDLQ** (per bucket) | Dead-letter queue for ObjectRemoved records that fail three receives (14-day retention, one per bucket)                                                                                                         |
+| **File/Asset Indexer Queues**         | Buffer indexing events between Amazon SNS and indexer Lambdas                                                                                                                                                   |
+| **File/Asset Indexer DLQs**           | One per indexer queue. Hold the indexing records the indexer Lambda still could not process after three deliveries                                                                                              |
+| **Physna File/Asset Sync Queues**     | Buffer sync events for the Physna addon (conditional on `app.addons.usePhysnaSync`)                                                                                                                             |
+| **Physna File/Asset Sync DLQs**       | One per Physna sync queue. Hold the sync events the sync Lambda still could not process after three deliveries (conditional on `app.addons.usePhysnaSync`)                                                      |
+| **Garnet File/Asset/Database Queues** | Buffer indexing events for the Garnet Framework addon (conditional on `app.addons.useGarnetFramework`)                                                                                                          |
+| **Garnet File/Asset/Database DLQs**   | One per Garnet indexer queue. Hold the events the indexer Lambda could not process after three deliveries (conditional on `app.addons.useGarnetFramework`)                                                      |
+| **MirisViewerKeyCleanupDLQ**          | On-failure destination of the Miris viewer key cleanup stream mapping: records of batches that still fail after ten retries (14-day retention; conditional on `app.addons.useMirisStreaming` in `perView` mode) |
 
 All Amazon SQS queues enforce SSL and use optional AWS KMS encryption. Each dead-letter queue repeats the encryption configuration of the queue whose messages it receives; the Deadline Cloud callback queue is the dead-letter target of Amazon EventBridge rules rather than of a source queue, and takes the same deployment-wide encryption setting. A consumer Lambda role holds receive permission on its source queue only, so reading or redriving a dead-letter queue is an operator action performed with credentials that grant access to that queue. Every queue uses a `DESTROY` removal policy and is deleted with the stack.
 
@@ -462,6 +481,7 @@ VAMS publishes deployment configuration values as explicitly named SSM `String` 
 | `/<name>-<baseStackName>-<region>/resourceNames/cloudwatchLogGroups/*` | 9      | Audit log group names                                                                                                                                                                                                                         |
 | `/<name>-<baseStackName>-<region>/resourceNames/lambdaFunctions/*`     | 2      | OpenSearch reindexer function name, read by the data-migration tooling only (when search is enabled), and the `vamsSchema` import function name, read by externally owned pipeline bridge stacks                                              |
 | `/<name>-<baseStackName>-<region>/resourceNames/integration/*`         | 3      | External bridge integration surface: orchestration bus ARN + event source prefix, workflow state-machine role ARN                                                                                                                             |
+| `/<name>-<baseStackName>-<region>/resourceNames/addon/*` | 0 or 1 | Add-on resource names: the Miris viewer key table name (`addon/miris/viewerKeyStorage`), published by the Miris add-on stack in `perView` mode |
 | `/<name>-<baseStackName>-<region>/aos/*`                               | 3      | OpenSearch endpoint and index names (when search is enabled)                                                                                                                                                                                  |
 | `/<name>-<baseStackName>-<region>/web/deployedUrl`                     | 1      | Deployed web application URL                                                                                                                                                                                                                  |
 | `/<name>-<baseStackName>-<region>/location/apiKeyArn`                  | 1      | Amazon Location Service API key ARN (when Location Service is enabled). The key itself is named `vams-location-api-key-<name>-<baseStackName>-<region>` — a custom name, so it is redeploy-collision relevant — and is deleted with the stack |
@@ -484,6 +504,8 @@ The following secrets are created when the feature that uses them is enabled:
 | **API origin verification secret** | `app.useCloudFront.enabled` (the commercial template's default)   | Destroyed with the stack | No (auto-named)                  | Value CloudFront adds to the API requests it forwards (`x-vams-origin-verify`), generated by Secrets Manager and rotated every 45 days; in the `<name>-origin-verify-<baseStackName>-<region>` stack |
 | **Physna credentials secret**      | `app.addons.usePhysnaSync.enabled` without `credentialsSecretArn` | Destroyed with the stack | No (auto-named)                  | Physna OAuth2 client id and secret, populated at deploy time                                                                                                                                         |
 | **Hugging Face token secrets**     | An NVIDIA Cosmos or NVIDIA GR00T pipeline is enabled, one each    | Destroyed with the stack | No (auto-named)                  | Hugging Face API token the pipeline uses to download its models, populated at deploy time from config                                                                                                |
+
+The Miris Spatial Streaming add-on reads the Miris Integration Key from a secret the operator creates and names in `app.addons.useMirisStreaming.apiKeySecretArn`. VAMS neither creates nor deletes that secret.
 
 The API origin verification secret is JSON: `current` is the value CloudFront sends, and `previous`, written by each rotation, the value it sent before. The regional web ACL stack and the core stack resolve it through `{{resolve:secretsmanager:...}}` dynamic references, which is why it has a stack of its own that deploys before both. It is encrypted with `useKmsCmkEncryption.optionalExternalCmkArn` when that is set; with `useKmsCmkEncryption.enabled` and no external key, with a key of the same stack (see [AWS KMS](#aws-kms)), because the VAMS-generated key is created by the core stack, which deploys after it; otherwise with the AWS managed `aws/secretsmanager` key.
 

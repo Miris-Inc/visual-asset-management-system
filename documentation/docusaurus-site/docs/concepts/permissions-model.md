@@ -525,9 +525,11 @@ On a `pipeline` or `workflow` object, `POST` means **create** and `PUT` means **
 
 ### Add-on routes
 
-| Route                  | Methods | Tier 2 Object Type | Tier 2 Fields                                  |
-| ---------------------- | ------- | ------------------ | ---------------------------------------------- |
-| `/addon/physna/viewer` | GET     | `asset`            | `assetName`, `databaseId`, `assetType`, `tags` |
+| Route                       | Methods | Tier 2 Object Type         | Tier 2 Fields                                  |
+| --------------------------- | ------- | -------------------------- | ---------------------------------------------- |
+| `/addon/physna/viewer`      | GET     | `asset`                    | `assetName`, `databaseId`, `assetType`, `tags` |
+| `/addon/miris/asset-status` | GET     | `asset`                    | `assetName`, `databaseId`, `assetType`, `tags` |
+| `/addon/miris/viewer-key`   | POST    | `asset` (checked as `GET`) | `assetName`, `databaseId`, `assetType`, `tags` |
 
 ## Performance considerations
 

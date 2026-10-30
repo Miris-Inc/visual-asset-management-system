@@ -10,7 +10,7 @@ The VAMS web interface is a React 18 application built with Vite and the AWS Clo
 
 ### Viewer Plugins
 
-VAMS includes built-in viewer plugins across five categories (3D, Media, Document, Data, and Preview), covering 3D meshes, CAD, point clouds, Gaussian splats, USD, IFC/BIM models, and robotics logs (MCAP, ROS 1 and ROS 2 bags, PX4 ULog). The plugin-based architecture supports lazy loading, per-plugin dependency management, automatic viewer selection based on file extension, and fullscreen mode. Two additional licensed viewers (VNTANA and VEERUM) provide commercial-grade rendering for GLB models and point clouds.
+VAMS includes built-in viewer plugins across five categories (3D, Media, Document, Data, and Preview), covering 3D meshes, CAD, point clouds, Gaussian splats, USD, IFC/BIM models, and robotics logs (MCAP, ROS 1 and ROS 2 bags, PX4 ULog). The plugin-based architecture supports lazy loading, per-plugin dependency management, automatic viewer selection based on file extension, and fullscreen mode. Two additional licensed viewers (VNTANA and VEERUM) provide commercial-grade rendering for GLB models and point clouds, and the Miris Spatial Streaming add-on streams USD files progressively from Miris.
 
 For the complete list of supported file viewers and extensions, see [File Viewers](../concepts/viewers.md).
 
@@ -264,20 +264,21 @@ Pipelines that use AWS Batch Fargate containers require `useGlobalVpc.enabled` t
 
 VAMS uses a feature flag system to conditionally enable capabilities at deployment time. Feature flags are persisted to Amazon DynamoDB and read by the web interface at runtime.
 
-| Feature Flag                    | Description                                                                                                                                                          |
-| ------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `GOVCLOUD`                      | Indicates AWS GovCloud deployment mode (also set for AWS European Sovereign Cloud deployments)                                                                       |
-| `ALLOWUNSAFEEVAL`               | Enables viewers requiring `unsafe-eval` CSP (Needle USD, SuperSplat Editor, ThatOpen IFC BIM, Robotics Data Viewer, Three.js CAD formats)                            |
-| `LOCATIONSERVICES`              | Enables Amazon Location Service integration for map views                                                                                                            |
-| `ALBDEPLOY`                     | Indicates Application Load Balancer web distribution                                                                                                                 |
-| `CLOUDFRONTDEPLOY`              | Indicates Amazon CloudFront web distribution                                                                                                                         |
-| `NOOPENSEARCH`                  | Indicates Amazon OpenSearch is disabled                                                                                                                              |
-| `AUTHPROVIDER_COGNITO`          | Indicates Amazon Cognito authentication                                                                                                                              |
-| `AUTHPROVIDER_COGNITO_SAML`     | Indicates Amazon Cognito with SAML federation                                                                                                                        |
-| `AUTHPROVIDER_COGNITO_OIDC`     | Indicates Amazon Cognito with OIDC federation                                                                                                                        |
-| `AUTHPROVIDER_EXTERNALOAUTHIDP` | Indicates external OAuth2 authentication                                                                                                                             |
-| `PHYSNA_ADDON`                  | Enables Physna add-on frontend features (viewer plugin, future Physna-powered UI surfaces). Emitted automatically when `app.addons.usePhysnaSync.enabled` is `true`. |
-| `DEADLINECLOUD_PIPELINES`       | Enables the AWS Deadline Cloud pipeline execution type in the web interface. Emitted automatically when `app.pipelines.deadlineCloudExecutionTypeEnabled` is `true`. |
+| Feature Flag                    | Description                                                                                                                                                                       |
+| ------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GOVCLOUD`                      | Indicates AWS GovCloud deployment mode (also set for AWS European Sovereign Cloud deployments)                                                                                    |
+| `ALLOWUNSAFEEVAL`               | Enables viewers requiring `unsafe-eval` CSP (Needle USD, SuperSplat Editor, ThatOpen IFC BIM, Robotics Data Viewer, Three.js CAD formats, and the Miris Spatial Streaming viewer) |
+| `LOCATIONSERVICES`              | Enables Amazon Location Service integration for map views                                                                                                                         |
+| `ALBDEPLOY`                     | Indicates Application Load Balancer web distribution                                                                                                                              |
+| `CLOUDFRONTDEPLOY`              | Indicates Amazon CloudFront web distribution                                                                                                                                      |
+| `NOOPENSEARCH`                  | Indicates Amazon OpenSearch is disabled                                                                                                                                           |
+| `AUTHPROVIDER_COGNITO`          | Indicates Amazon Cognito authentication                                                                                                                                           |
+| `AUTHPROVIDER_COGNITO_SAML`     | Indicates Amazon Cognito with SAML federation                                                                                                                                     |
+| `AUTHPROVIDER_COGNITO_OIDC`     | Indicates Amazon Cognito with OIDC federation                                                                                                                                     |
+| `AUTHPROVIDER_EXTERNALOAUTHIDP` | Indicates external OAuth2 authentication                                                                                                                                          |
+| `PHYSNA_ADDON`                  | Enables Physna add-on frontend features (viewer plugin, future Physna-powered UI surfaces). Emitted automatically when `app.addons.usePhysnaSync.enabled` is `true`.              |
+| `MIRIS_ADDON`                   | Enables the Miris Spatial Streaming viewer plugin for USD files, together with `ALLOWUNSAFEEVAL`. Emitted automatically when `app.addons.useMirisStreaming.enabled` is `true`.    |
+| `DEADLINECLOUD_PIPELINES`       | Enables the AWS Deadline Cloud pipeline execution type in the web interface. Emitted automatically when `app.pipelines.deadlineCloudExecutionTypeEnabled` is `true`.              |
 
 ### Additional Configuration
 
@@ -287,7 +288,7 @@ VAMS uses a feature flag system to conditionally enable capabilities at deployme
 -   **Metadata schema auto-loading** -- Control which default metadata schemas are loaded on deployment
 -   **External asset buckets** -- Register existing Amazon S3 buckets with VAMS for asset management
 -   **Custom Amazon S3 bucket policies** -- Additional bucket policy statements via `s3AdditionalBucketPolicyConfig.json`
--   **Add-ons** -- Optional, upstream-maintained integrations with external solutions and stand-alone components, enabled by configuration ([Add-ons Overview](../developer/addons-overview.md)): Garnet Framework integration for NGSI-LD digital twin data synchronization; Physna Sync add-on for one-way synchronization of supported 3D/CAD files and metadata to a Physna for geometric and semantic 3D search; the licensed VNTANA and VEERUM viewers
+-   **Add-ons** -- Optional, upstream-maintained integrations with external solutions and stand-alone components, enabled by configuration ([Add-ons Overview](../developer/addons-overview.md)): Garnet Framework integration for NGSI-LD digital twin data synchronization; Physna Sync add-on for one-way synchronization of supported 3D/CAD files and metadata to a Physna for geometric and semantic 3D search; Miris Spatial Streaming add-on for streaming USD files from Miris in the file viewer; the licensed VNTANA and VEERUM viewers
 
 ### Fork Extension Points
 
@@ -297,4 +298,4 @@ An organization that runs its own fork of VAMS adds its own features in files th
 -   **Infrastructure** -- CDK resources in a nested stack of their own, feature switches and fork settings
 -   **Web, CLI and MCP** -- web pages, routes and navigation, viewer plugins and their install steps, CLI commands and client methods, MCP tools
 -   **Collision checks** -- an entry that duplicates a core route, resource-name key, feature switch, object type, constraint field, CLI command or viewer is refused rather than replacing the core one
--   **Add-on files** -- the optional add-ons (Physna, Garnet) and the licensed viewers (VNTANA, VEERUM) live in add-on files beside the core lists, so add-on code stays off the path of core changes
+-   **Add-on files** -- the optional add-ons (Physna, Garnet, Miris Spatial Streaming) and the licensed viewers (VNTANA, VEERUM) live in add-on files beside the core lists, so add-on code stays off the path of core changes
