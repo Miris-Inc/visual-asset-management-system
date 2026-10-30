@@ -8,6 +8,9 @@
  * (`GET /addon/miris/asset-status`) for the stream viewer.
  */
 
+/** File types the Miris Spatial Streaming Upload workflow accepts (its input file filter). */
+const MIRIS_UPLOAD_EXTENSIONS = [".usd", ".usda", ".usdc", ".usdz"];
+
 /** States the status endpoint reports itself; any other value is a Miris processing state. */
 export const STATE_NOT_STREAMED = "notStreamed";
 export const STATE_INVALID_UUID = "invalidUuid";
@@ -52,6 +55,12 @@ export function streamDisposition(state: string): StreamDisposition {
  */
 export function toStatusFilePath(assetKey: string): string {
     return `/${assetKey.replace(/^\/+/, "")}`;
+}
+
+/** True when the Miris Spatial Streaming Upload workflow accepts the file at this path or key. */
+export function acceptsMirisUpload(path: string): boolean {
+    const lower = path.toLowerCase();
+    return MIRIS_UPLOAD_EXTENSIONS.some((extension) => lower.endsWith(extension));
 }
 
 /** A file version id that identifies an S3 object version ("null" marks an unversioned read). */

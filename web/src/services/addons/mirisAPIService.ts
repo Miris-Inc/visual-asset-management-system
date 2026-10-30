@@ -4,6 +4,12 @@
  */
 
 import { apiClient, isRequestBlocked } from "../apiClient";
+import { unwrapMessage } from "../../features/orchestration/api/client";
+import type {
+    ExecuteRequest,
+    ExecuteResponse,
+    Execution,
+} from "../../features/orchestration/types";
 
 /**
  * Miris stream recorded on one asset file, as returned by `GET /addon/miris/asset-status`.
@@ -33,6 +39,35 @@ export interface MirisViewerKey {
 
 /** `state` reported for a request the deployment's AWS WAF web ACL blocked. */
 export const MIRIS_REQUEST_BLOCKED = "requestBlocked";
+
+/** The GLOBAL workflow the Miris Upload pipeline registers, which uploads one USD file to Miris. */
+export const MIRIS_UPLOAD_WORKFLOW_DATABASE_ID = "GLOBAL";
+export const MIRIS_UPLOAD_WORKFLOW_ID = "miris-upload";
+
+/** Tier-1 route a caller must be allowed to call to start the upload workflow. */
+export const EXECUTE_WORKFLOW_API_ROUTE = "/workflows/{workflowDatabaseId}/{workflowId}/execute";
+
+/** Tier-1 route a caller must be allowed to call to list an asset's workflow executions. */
+export const ASSET_EXECUTIONS_API_ROUTE =
+    "/database/{databaseId}/assets/{assetId}/workflows/executions";
+
+/** Execution statuses that mean a run has finished; any other status is still in progress. */
+const TERMINAL_EXECUTION_STATUSES = new Set([
+    "SUCCEEDED",
+    "FAILED",
+    "ABORTED",
+    "TIMED_OUT",
+    "COMPLETE",
+]);
+
+/** Upper bound on the execution list pages one in-progress lookup reads. */
+const RUNNING_UPLOAD_MAX_PAGES = 10;
+
+/** True when a listed execution has not finished: no stop date and no terminal status. */
+export function isExecutionInProgress(execution: Partial<Execution>): boolean {
+    if (execution.executionStopDate) return false;
+    return !TERMINAL_EXECUTION_STATUSES.has(String(execution.executionStatus || ""));
+}
 
 /**
  * Failure tuple for a request that threw: the message, the HTTP status when the request reached
@@ -130,5 +165,99 @@ export const mintMirisViewerKey = async ({
     } catch (error: any) {
         console.log(error?.message);
         return requestFailure(error, "Failed to get a Miris viewer key");
+    }
+};
+
+/**
+ * Start the Miris Spatial Streaming Upload workflow on one file, as a manual run of the GLOBAL
+ * `miris-upload` workflow. `filePath` is the asset-relative path the status endpoint returns. The
+ * request names no template, so the pipeline runs with its default template, which the execute
+ * endpoint applies to a pipeline that requires one. No file version is pinned: the pipeline
+ * uploads the asset's current files.
+ *
+ * Returns [true, ExecuteResponse] on success, or [false, errorMessage, status, state] on failure,
+ * where `status` is the HTTP status when the request reached the API (403 for a permission
+ * denial) and undefined otherwise. A request the AWS WAF web ACL blocked reports an undefined
+ * status and the state `requestBlocked`.
+ */
+export const startMirisUpload = async ({
+    databaseId,
+    assetId,
+    filePath,
+}: MirisFileRequest): Promise<
+    [true, ExecuteResponse] | [false, string, number | undefined, string | undefined]
+> => {
+    const body: ExecuteRequest = {
+        inputFiles: [{ databaseId, assetId, relativeFileKey: filePath }],
+        triggerType: "manual",
+    };
+    try {
+        const response = await apiClient.post(
+            `workflows/${MIRIS_UPLOAD_WORKFLOW_DATABASE_ID}/${MIRIS_UPLOAD_WORKFLOW_ID}/execute`,
+            { body }
+        );
+        const result = unwrapMessage(response);
+        return [true, result && typeof result === "object" ? (result as ExecuteResponse) : {}];
+    } catch (error: any) {
+        console.log(error?.message);
+        return requestFailure(error, "Failed to start the Miris upload");
+    }
+};
+
+interface MirisAssetRequest {
+    databaseId: string;
+    assetId: string;
+}
+
+/**
+ * Find a Miris Spatial Streaming Upload run on an asset that has not finished. Lists the asset's
+ * workflow executions (`GET /database/{databaseId}/assets/{assetId}/workflows/executions`) filtered
+ * server side to the GLOBAL `miris-upload` workflow, newest first, and returns the first one whose
+ * status is not terminal. The match is asset-level rather than per file, since the pipeline uploads
+ * the asset's root file whichever file started it. The listing covers the endpoint's default
+ * look-back window, and its filters apply after each page is read, so pages are followed until a
+ * run is found, the listing ends, or `RUNNING_UPLOAD_MAX_PAGES` pages have been read.
+ *
+ * Returns [true, Execution] for a run in progress, [true, null] when none is found, or
+ * [false, errorMessage] on failure.
+ */
+export const findRunningMirisUpload = async ({
+    databaseId,
+    assetId,
+}: MirisAssetRequest): Promise<[true, Execution | null] | [false, string]> => {
+    const requested = new Set<string>();
+    let startingToken: string | undefined;
+    try {
+        for (let page = 0; page < RUNNING_UPLOAD_MAX_PAGES; page++) {
+            const response = await apiClient.get(
+                `database/${databaseId}/assets/${assetId}/workflows/executions`,
+                {
+                    queryStringParameters: {
+                        workflowDatabaseId: MIRIS_UPLOAD_WORKFLOW_DATABASE_ID,
+                        workflowId: MIRIS_UPLOAD_WORKFLOW_ID,
+                        ...(startingToken ? { startingToken } : {}),
+                    },
+                }
+            );
+            const result = unwrapMessage(response);
+            if (!result || typeof result !== "object" || !Array.isArray(result.Items)) {
+                return [false, "Unknown response shape"];
+            }
+            const running = (result.Items as Execution[]).find(
+                (execution) =>
+                    execution.workflowId === MIRIS_UPLOAD_WORKFLOW_ID &&
+                    execution.workflowDatabaseId === MIRIS_UPLOAD_WORKFLOW_DATABASE_ID &&
+                    isExecutionInProgress(execution)
+            );
+            if (running) return [true, running];
+            const next = typeof result.NextToken === "string" ? result.NextToken : "";
+            if (!next || requested.has(next)) return [true, null];
+            requested.add(next);
+            startingToken = next;
+        }
+        return [true, null];
+    } catch (error: any) {
+        console.log(error?.message);
+        return [false, error?.message || "Failed to list the asset's Miris uploads"];
     }
 };

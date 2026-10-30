@@ -3,7 +3,14 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { getMirisStreamStatus, MIRIS_REQUEST_BLOCKED, mintMirisViewerKey } from "./mirisAPIService";
+import {
+    findRunningMirisUpload,
+    getMirisStreamStatus,
+    isExecutionInProgress,
+    MIRIS_REQUEST_BLOCKED,
+    mintMirisViewerKey,
+    startMirisUpload,
+} from "./mirisAPIService";
 import { ApiError, apiClient } from "../apiClient";
 
 jest.mock("../apiClient", () => {
@@ -222,5 +229,166 @@ describe("mintMirisViewerKey", () => {
         mockPost.mockResolvedValue(KEY);
         await mintMirisViewerKey(ARGS);
         expect(JSON.stringify((console.log as jest.Mock).mock.calls)).not.toContain(KEY.viewerKey);
+    });
+});
+
+describe("startMirisUpload", () => {
+    it("executes the GLOBAL miris-upload workflow on the one file, as a manual run", async () => {
+        mockPost.mockResolvedValue({ message: { executionId: "exec-1" } });
+        await startMirisUpload(ARGS);
+        expect(mockPost).toHaveBeenCalledWith("workflows/GLOBAL/miris-upload/execute", {
+            body: {
+                inputFiles: [
+                    {
+                        databaseId: "db-1",
+                        assetId: "asset-1",
+                        relativeFileKey: "/folder/scene.usd",
+                    },
+                ],
+                triggerType: "manual",
+            },
+        });
+    });
+
+    it("names no template, so the pipeline's default template applies", async () => {
+        mockPost.mockResolvedValue({ message: { executionId: "exec-1" } });
+        await startMirisUpload(ARGS);
+        expect(mockPost.mock.calls[0][1].body.pipelineExecutionParameters).toBeUndefined();
+    });
+
+    it("returns the unwrapped execute response on success", async () => {
+        mockPost.mockResolvedValue({
+            message: { executionId: "exec-1", warnings: ["note"] },
+        });
+        expect(await startMirisUpload(ARGS)).toEqual([
+            true,
+            { executionId: "exec-1", warnings: ["note"] },
+        ]);
+    });
+
+    it.each([400, 403, 500])(
+        "returns the message and HTTP status %i on failure",
+        async (statusCode) => {
+            mockPost.mockRejectedValue(new ApiError("denied", statusCode, { message: "denied" }));
+            expect(await startMirisUpload(ARGS)).toEqual([false, "denied", statusCode, undefined]);
+        }
+    );
+
+    it("reports a WAF-blocked request as blocked rather than as a 403", async () => {
+        mockPost.mockRejectedValue(wafBlocked());
+        expect(await startMirisUpload(ARGS)).toEqual([
+            false,
+            "Request blocked (request ID abc-123)",
+            undefined,
+            MIRIS_REQUEST_BLOCKED,
+        ]);
+    });
+});
+
+describe("findRunningMirisUpload", () => {
+    const ASSET = { databaseId: "db-1", assetId: "asset-1" };
+    const PATH = "database/db-1/assets/asset-1/workflows/executions";
+    const execution = (overrides: Record<string, unknown> = {}) => ({
+        workflowExecutionId: "exec-1",
+        workflowId: "miris-upload",
+        workflowDatabaseId: "GLOBAL",
+        executionStatus: "RUNNING",
+        executionStartDate: "2026-10-29T10:00:00Z",
+        executionStopDate: "",
+        ...overrides,
+    });
+    const page = (items: unknown[], nextToken?: string) => ({
+        message: {
+            Items: items,
+            filterStartDate: "2026-07-31T10:00:00Z",
+            ...(nextToken ? { NextToken: nextToken } : {}),
+        },
+    });
+
+    it("lists the asset's executions filtered to the GLOBAL miris-upload workflow", async () => {
+        mockGet.mockResolvedValue(page([]));
+        await findRunningMirisUpload(ASSET);
+        expect(mockGet).toHaveBeenCalledTimes(1);
+        expect(mockGet).toHaveBeenCalledWith(PATH, {
+            queryStringParameters: { workflowDatabaseId: "GLOBAL", workflowId: "miris-upload" },
+        });
+    });
+
+    it.each(["RUNNING", "NEW"])("returns a %s run", async (executionStatus) => {
+        const run = execution({ executionStatus });
+        mockGet.mockResolvedValue(page([run]));
+        expect(await findRunningMirisUpload(ASSET)).toEqual([true, run]);
+    });
+
+    it("returns null when every run has finished", async () => {
+        mockGet.mockResolvedValue(
+            page([
+                execution({ workflowExecutionId: "a", executionStatus: "SUCCEEDED" }),
+                execution({ workflowExecutionId: "b", executionStatus: "FAILED" }),
+                execution({ workflowExecutionId: "c", executionStatus: "ABORTED" }),
+                execution({ workflowExecutionId: "d", executionStatus: "TIMED_OUT" }),
+                execution({
+                    workflowExecutionId: "e",
+                    executionStopDate: "2026-10-29T11:00:00Z",
+                }),
+            ])
+        );
+        expect(await findRunningMirisUpload(ASSET)).toEqual([true, null]);
+    });
+
+    it("ignores a run of another workflow", async () => {
+        mockGet.mockResolvedValue(page([execution({ workflowId: "other" })]));
+        expect(await findRunningMirisUpload(ASSET)).toEqual([true, null]);
+    });
+
+    it("follows NextToken until it finds a run", async () => {
+        const run = execution({ workflowExecutionId: "exec-2" });
+        mockGet
+            .mockResolvedValueOnce(page([], "token-1"))
+            .mockResolvedValueOnce(page([run], "token-2"));
+        expect(await findRunningMirisUpload(ASSET)).toEqual([true, run]);
+        expect(mockGet).toHaveBeenCalledTimes(2);
+        expect(mockGet).toHaveBeenLastCalledWith(PATH, {
+            queryStringParameters: {
+                workflowDatabaseId: "GLOBAL",
+                workflowId: "miris-upload",
+                startingToken: "token-1",
+            },
+        });
+    });
+
+    it("stops on a repeated NextToken", async () => {
+        mockGet.mockResolvedValue(page([], "token-1"));
+        expect(await findRunningMirisUpload(ASSET)).toEqual([true, null]);
+        expect(mockGet).toHaveBeenCalledTimes(2);
+    });
+
+    it("stops after its page bound", async () => {
+        let n = 0;
+        mockGet.mockImplementation(async () => page([], `token-${++n}`));
+        expect(await findRunningMirisUpload(ASSET)).toEqual([true, null]);
+        expect(mockGet).toHaveBeenCalledTimes(10);
+    });
+
+    it("reports a failed request", async () => {
+        mockGet.mockRejectedValue(new ApiError("Forbidden", 403, { message: "Forbidden" }));
+        expect(await findRunningMirisUpload(ASSET)).toEqual([false, "Forbidden"]);
+    });
+
+    it("reports an unknown response shape", async () => {
+        mockGet.mockResolvedValue({ message: "nope" });
+        expect(await findRunningMirisUpload(ASSET)).toEqual([false, "Unknown response shape"]);
+    });
+});
+
+describe("isExecutionInProgress", () => {
+    it.each([
+        [{ executionStatus: "RUNNING" }, true],
+        [{ executionStatus: "NEW" }, true],
+        [{ executionStatus: "SUCCEEDED" }, false],
+        [{ executionStatus: "COMPLETE" }, false],
+        [{ executionStatus: "RUNNING", executionStopDate: "2026-10-29T11:00:00Z" }, false],
+    ])("%o -> %s", (execution, expected) => {
+        expect(isExecutionInProgress(execution as any)).toBe(expected);
     });
 });

@@ -3,6 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 import {
+    acceptsMirisUpload,
     isStaleStream,
     latestVersionIdFromFileInfo,
     streamDisposition,
@@ -90,4 +91,17 @@ describe("latestVersionIdFromFileInfo", () => {
             expect(latestVersionIdFromFileInfo(fileInfo)).toBeUndefined();
         }
     );
+});
+
+describe("acceptsMirisUpload", () => {
+    it.each(["/scene.usd", "/a/scene.usda", "/a/scene.usdc", "/a/b/scene.usdz", "/SCENE.USDZ"])(
+        "accepts %s",
+        (path) => {
+            expect(acceptsMirisUpload(path)).toBe(true);
+        }
+    );
+
+    it.each(["/scene.glb", "/scene.usd.txt", "/usd", "/folder/"])("rejects %s", (path) => {
+        expect(acceptsMirisUpload(path)).toBe(false);
+    });
 });

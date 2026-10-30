@@ -6,15 +6,28 @@ import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
 import Alert from "@cloudscape-design/components/alert";
 import Box from "@cloudscape-design/components/box";
 import Button from "@cloudscape-design/components/button";
+import Link from "@cloudscape-design/components/link";
 import SpaceBetween from "@cloudscape-design/components/space-between";
 import { ViewerPluginProps } from "../../core/types";
+import Synonyms from "../../../synonyms";
 import { fetchFileInfo } from "../../../services/APIService";
 import {
+    ASSET_EXECUTIONS_API_ROUTE,
+    EXECUTE_WORKFLOW_API_ROUTE,
+    findRunningMirisUpload,
     getMirisStreamStatus,
     MIRIS_REQUEST_BLOCKED,
     mintMirisViewerKey,
+    startMirisUpload,
 } from "../../../services/addons/mirisAPIService";
+import { useAllowedRoutes } from "../../../features/orchestration/permissions/useAllowedRoutes";
+import { appCache } from "../../../services/appCache";
 import {
+    EXECUTION_DETAILS_API_ROUTE,
+    executionDetailPath,
+} from "../../../components/filemanager/utils/executionLinks";
+import {
+    acceptsMirisUpload,
     isKnownVersionId,
     isStaleStream,
     latestVersionIdFromFileInfo,
@@ -24,6 +37,15 @@ import {
 import { MirisStreamDependencyManager } from "./dependencies";
 import type { MirisSceneElement, MirisStreamElement } from "./mirisElements";
 import styles from "./MirisStreamViewer.module.css";
+
+// Add-on feature switch (ADDON_APP_FEATURES.MIRIS_UPLOAD) published when the deployment includes the
+// Miris upload pipeline that "Stream with Miris" runs.
+const MIRIS_UPLOAD_FEATURE = "MIRIS_UPLOAD";
+
+/** True when the deployment's secure-config lists the Miris upload pipeline's feature switch. */
+function uploadPipelineDeployed(): boolean {
+    return !!appCache.getItem("config")?.featuresEnabled?.includes(MIRIS_UPLOAD_FEATURE);
+}
 
 type ViewerError =
     | { kind: "NOT_CONFIGURED" }
@@ -39,6 +61,18 @@ type ViewerError =
     | { kind: "MIRIS_PROCESSING_ERROR" };
 
 type ProcessingState = { state: string };
+
+// The file records no Miris stream; `filePath` is its asset-relative path, which an upload names.
+type NotStreamed = { filePath: string };
+
+// "Stream with Miris" request from the not-yet-streamed state.
+type UploadRequest = { kind: "starting" } | { kind: "failed"; message: string };
+
+// An upload has started and the file does not record its stream yet.
+type UploadStarted = { executionId: string | null };
+
+// Lookup of an unfinished Miris upload run on the asset, made before the button is offered.
+type RunningUpload = { kind: "checking" } | { kind: "running"; executionId: string };
 
 type StreamInfo = {
     uuid: string;
@@ -81,12 +115,13 @@ function errorMessage(err: ViewerError): string {
         case "REQUEST_BLOCKED":
             return err.message;
         case "INVALID_UUID":
-            return "This file's miris_asset_uuid metadata is not a valid UUID. Correct it in the file's metadata.";
+            return "This file's miris_asset_uuid metadata is not a valid UUID. Correct it in the file's metadata, or run the Miris Spatial Streaming Upload workflow on it again.";
         case "NOT_BOUND":
             return (
                 "The Miris asset recorded for this file is not linked to this VAMS asset: it must " +
                 `exist in the Miris workspace and carry the vams-asset-${err.assetId} and ` +
-                `vams-database-${err.databaseId} tags. Add those tags to the Miris asset.`
+                `vams-database-${err.databaseId} tags. Run the Miris Spatial Streaming Upload workflow on this file again, ` +
+                "or add those tags to the Miris asset."
             );
         case "LOAD_FAILED":
             return "The Miris viewer failed to load. Try again.";
@@ -112,7 +147,11 @@ function errorMessage(err: ViewerError): string {
  * Viewer for USD source files (.usd/.usda/.usdc/.usdz) that streams the Miris asset recorded
  * in the file's `miris_*` metadata. The stream status endpoint resolves that metadata server
  * side, so the viewer sends only the file path:
- *   - notStreamed  -> "Not yet streamed" guidance
+ *   - notStreamed  -> "Not yet streamed" guidance, with a "Stream with Miris" button that starts
+ *                     the upload workflow when the deployment includes the Miris upload pipeline
+ *                     (MIRIS_UPLOAD) and the user is allowed to run workflows; once started, the
+ *                     status is polled until the file records its stream. While an upload run on
+ *                     the asset has not finished, an in-progress notice replaces the button
  *   - invalidUuid  -> error
  *   - notBound     -> error: the Miris asset is not tagged for this VAMS asset
  *   - Miris still preparing the asset -> processing overlay, polled until it is streamable
@@ -128,7 +167,10 @@ const MirisStreamViewerComponent: React.FC<ViewerPluginProps> = ({
 }) => {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<ViewerError | null>(null);
-    const [notStreamed, setNotStreamed] = useState(false);
+    const [notStreamed, setNotStreamed] = useState<NotStreamed | null>(null);
+    const [uploadRequest, setUploadRequest] = useState<UploadRequest | null>(null);
+    const [uploadStarted, setUploadStarted] = useState<UploadStarted | null>(null);
+    const [runningUpload, setRunningUpload] = useState<RunningUpload | null>(null);
     const [streamInfo, setStreamInfo] = useState<StreamInfo | null>(null);
     const [staleStream, setStaleStream] = useState(false);
     const [processingState, setProcessingState] = useState<ProcessingState | null>(null);
@@ -141,10 +183,18 @@ const MirisStreamViewerComponent: React.FC<ViewerPluginProps> = ({
     const streamRef = useRef<MirisStreamElement>(null);
     const sceneGenerationRef = useRef(0);
     const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+    // Bumped by every load, so an upload request that resolves after the viewed file changed is dropped.
+    const loadGenerationRef = useRef(0);
+
+    const { can } = useAllowedRoutes();
+    const canExecuteWorkflow = can("POST", EXECUTE_WORKFLOW_API_ROUTE);
+    const canViewExecution = can("GET", EXECUTION_DETAILS_API_ROUTE);
+    const canListExecutions = can("GET", ASSET_EXECUTIONS_API_ROUTE);
 
     useEffect(() => {
         let cancelled = false;
         let sdkLoadTimer: ReturnType<typeof setTimeout> | undefined;
+        loadGenerationRef.current += 1;
 
         async function load() {
             try {
@@ -153,13 +203,17 @@ const MirisStreamViewerComponent: React.FC<ViewerPluginProps> = ({
                     setScene(null);
                     setError(null);
                     setProcessingState(null);
-                    setNotStreamed(false);
+                    setNotStreamed(null);
+                    setUploadRequest(null);
+                    setUploadStarted(null);
                     setLoading(false);
                     return;
                 }
                 setLoading(true);
                 setError(null);
-                setNotStreamed(false);
+                setNotStreamed(null);
+                setUploadRequest(null);
+                setUploadStarted(null);
                 setScene(null);
 
                 // 1. Stream status of the viewed file
@@ -183,7 +237,7 @@ const MirisStreamViewerComponent: React.FC<ViewerPluginProps> = ({
                 if (disposition === "notStreamed") {
                     setStreamInfo(null);
                     setProcessingState(null);
-                    setNotStreamed(true);
+                    setNotStreamed({ filePath: status.filePath });
                     setLoading(false);
                     return;
                 }
@@ -254,7 +308,7 @@ const MirisStreamViewerComponent: React.FC<ViewerPluginProps> = ({
                         setError({ kind: "REQUEST_BLOCKED", message });
                     } else if (keyStatus === 404) {
                         setStreamInfo(null);
-                        setNotStreamed(true);
+                        setNotStreamed({ filePath: status.filePath });
                         setLoading(false);
                     } else if (keyStatus === 403) {
                         setError(
@@ -324,6 +378,124 @@ const MirisStreamViewerComponent: React.FC<ViewerPluginProps> = ({
         };
     }, [assetId, databaseId, assetKey, reloadCount]);
 
+    // After an upload starts, the file records no stream until the pipeline writes its stream
+    // metadata, so the status is polled on the processing interval until it does; load() then
+    // handles the new state from the top.
+    const uploadPending = uploadStarted !== null;
+    useEffect(() => {
+        if (!uploadPending || !assetKey) return;
+        let cancelled = false;
+        const filePath = toStatusFilePath(assetKey);
+        const timer = setInterval(async () => {
+            try {
+                const r = await getMirisStreamStatus({ databaseId, assetId, filePath });
+                if (cancelled || r[0] !== true) return;
+                if (streamDisposition(r[1].state) === "notStreamed") return;
+                clearInterval(timer);
+                setUploadStarted(null);
+                setReloadCount((c) => c + 1);
+            } catch (_pollErr) {
+                // Swallow transient poll errors; the next tick will retry.
+            }
+        }, PROCESSING_POLL_INTERVAL_MS);
+        return () => {
+            cancelled = true;
+            clearInterval(timer);
+        };
+    }, [uploadPending, assetId, databaseId, assetKey]);
+
+    // Before the button is offered, the asset's executions are checked for an unfinished upload run,
+    // which would otherwise be started a second time. A failed or skipped lookup offers the button.
+    const notStreamedPath = notStreamed?.filePath ?? null;
+    const canStartUpload =
+        canExecuteWorkflow &&
+        notStreamedPath !== null &&
+        acceptsMirisUpload(notStreamedPath) &&
+        uploadPipelineDeployed();
+    const checkRunningUpload = canStartUpload && canListExecutions;
+    useEffect(() => {
+        setRunningUpload(null);
+        if (!checkRunningUpload) return;
+        let cancelled = false;
+        setRunningUpload({ kind: "checking" });
+        findRunningMirisUpload({ databaseId, assetId })
+            .then((result) => {
+                if (cancelled) return;
+                setRunningUpload(
+                    result[0] === true && result[1]
+                        ? { kind: "running", executionId: result[1].workflowExecutionId }
+                        : null
+                );
+            })
+            .catch(() => {
+                if (!cancelled) setRunningUpload(null);
+            });
+        return () => {
+            cancelled = true;
+        };
+    }, [checkRunningUpload, notStreamedPath, assetId, databaseId]);
+
+    // While a run is in progress, the status and the run are re-checked on the processing interval:
+    // a recorded stream re-runs load(), and a run that has finished offers the button again.
+    const uploadRunning = runningUpload?.kind === "running";
+    useEffect(() => {
+        if (!uploadRunning || !assetKey) return;
+        let cancelled = false;
+        const filePath = toStatusFilePath(assetKey);
+        const timer = setInterval(async () => {
+            try {
+                const r = await getMirisStreamStatus({ databaseId, assetId, filePath });
+                if (cancelled) return;
+                if (r[0] === true && streamDisposition(r[1].state) !== "notStreamed") {
+                    clearInterval(timer);
+                    setRunningUpload(null);
+                    setReloadCount((c) => c + 1);
+                    return;
+                }
+                const running = await findRunningMirisUpload({ databaseId, assetId });
+                if (cancelled || running[0] !== true) return;
+                setRunningUpload(
+                    running[1]
+                        ? { kind: "running", executionId: running[1].workflowExecutionId }
+                        : null
+                );
+            } catch (_pollErr) {
+                // Swallow transient poll errors; the next tick will retry.
+            }
+        }, PROCESSING_POLL_INTERVAL_MS);
+        return () => {
+            cancelled = true;
+            clearInterval(timer);
+        };
+    }, [uploadRunning, assetId, databaseId, assetKey]);
+
+    // Starts the Miris Spatial Streaming Upload workflow on the viewed file.
+    async function startUpload() {
+        if (!notStreamed || uploadRequest?.kind === "starting") return;
+        const generation = loadGenerationRef.current;
+        setUploadRequest({ kind: "starting" });
+        const result = await startMirisUpload({
+            databaseId,
+            assetId,
+            filePath: notStreamed.filePath,
+        });
+        if (generation !== loadGenerationRef.current) return;
+        if (result[0] !== true) {
+            const [, message, uploadStatus, uploadState] = result;
+            setUploadRequest({
+                kind: "failed",
+                message:
+                    uploadState !== MIRIS_REQUEST_BLOCKED && uploadStatus === 403
+                        ? "You don't have permission to run the Miris upload workflow."
+                        : message,
+            });
+            return;
+        }
+        setUploadRequest(null);
+        setNotStreamed(null);
+        setUploadStarted({ executionId: result[1].executionId || null });
+    }
+
     // The scene element owns rendering, camera framing, resize and teardown. The stream's
     // first data clears the load timeout; the scene's `error` event reports a WebGL shader
     // failure. Any viewer error unmounts the scene, which releases its renderer. The listeners
@@ -388,6 +560,9 @@ const MirisStreamViewerComponent: React.FC<ViewerPluginProps> = ({
     }, [sourceVersionId, assetId, databaseId, assetKey, versionId, assetVersionId]);
 
     if (notStreamed && !error) {
+        const starting = uploadRequest?.kind === "starting";
+        const running = runningUpload?.kind === "running" ? runningUpload : null;
+        const offerUpload = canStartUpload && !running;
         return (
             <div className={styles.guidance}>
                 <div className={styles.guidanceContent}>
@@ -398,11 +573,59 @@ const MirisStreamViewerComponent: React.FC<ViewerPluginProps> = ({
                             it now, choose <strong>Needle USD Viewer (Experimental)</strong> in the
                             viewer selector.
                         </Box>
-                        <Box variant="p" color="text-body-secondary">
-                            To stream it, upload it to Miris and set the file&apos;s{" "}
-                            <strong>miris_asset_uuid</strong> metadata to the Miris asset&apos;s
-                            UUID; once processing completes, you can stream it here.
-                        </Box>
+                        {running ? (
+                            <Alert type="info" statusIconAriaLabel="Info">
+                                <SpaceBetween size="xs">
+                                    <div>
+                                        A Miris upload for this {Synonyms.asset} is already running.
+                                    </div>
+                                    <div>
+                                        Once the upload completes, Miris prepares the asset. The
+                                        viewer checks the stream status every 90 seconds and
+                                        refreshes automatically when it&rsquo;s ready.
+                                    </div>
+                                    {canViewExecution && (
+                                        <Link
+                                            external
+                                            externalIconAriaLabel="(opens in a new tab)"
+                                            href={`#${executionDetailPath(running.executionId)}`}
+                                        >
+                                            View execution
+                                        </Link>
+                                    )}
+                                </SpaceBetween>
+                            </Alert>
+                        ) : (
+                            <Box variant="p" color="text-body-secondary">
+                                To stream it,{" "}
+                                {offerUpload && (
+                                    <>
+                                        choose <strong>Stream with Miris</strong> below, or{" "}
+                                    </>
+                                )}
+                                use the file manager&apos;s <strong>Automation</strong> action to
+                                run the <strong>Miris Spatial Streaming Upload</strong> workflow on
+                                it; once processing completes, you can stream it here.
+                            </Box>
+                        )}
+                        {offerUpload && (
+                            <Button
+                                variant="primary"
+                                loading={starting || runningUpload?.kind === "checking"}
+                                onClick={() => void startUpload()}
+                            >
+                                Stream with Miris
+                            </Button>
+                        )}
+                        {offerUpload && uploadRequest?.kind === "failed" && (
+                            <Alert
+                                type="error"
+                                statusIconAriaLabel="Error"
+                                action={<Button onClick={() => void startUpload()}>Retry</Button>}
+                            >
+                                {uploadRequest.message}
+                            </Alert>
+                        )}
                     </SpaceBetween>
                 </div>
             </div>
@@ -452,6 +675,31 @@ const MirisStreamViewerComponent: React.FC<ViewerPluginProps> = ({
                     </div>
                 </div>
             )}
+            {uploadStarted && !error && (
+                <div className={styles.errorOverlay}>
+                    <div>Upload to Miris started.</div>
+                    <div className={styles.overlayNote}>
+                        Once the upload completes, Miris prepares the asset. This usually takes
+                        1&ndash;2 hours.
+                    </div>
+                    <div className={styles.overlayNote}>
+                        The viewer checks the stream status every 90 seconds and refreshes
+                        automatically when it&rsquo;s ready.
+                    </div>
+                    {uploadStarted.executionId && canViewExecution && (
+                        <div className={styles.overlayAction}>
+                            <Link
+                                external
+                                color="inverted"
+                                externalIconAriaLabel="(opens in a new tab)"
+                                href={`#${executionDetailPath(uploadStarted.executionId)}`}
+                            >
+                                View execution
+                            </Link>
+                        </div>
+                    )}
+                </div>
+            )}
             {loading && !error && !processingState && (
                 <div className={styles.errorOverlay}>Loading…</div>
             )}
@@ -462,9 +710,8 @@ const MirisStreamViewerComponent: React.FC<ViewerPluginProps> = ({
                     )}
                     {staleStream && (
                         <Alert type="warning" statusIconAriaLabel="Warning">
-                            This stream was built from a different version of this file. Upload this
-                            version to Miris and update the file&apos;s stream metadata to stream
-                            it.
+                            This stream was built from a different version of this file. Run the
+                            Miris Spatial Streaming Upload workflow again to update it.
                         </Alert>
                     )}
                 </div>

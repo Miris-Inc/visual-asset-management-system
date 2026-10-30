@@ -32,6 +32,8 @@ const mockGetMirisStreamStatus = jest.fn();
 const mockFetchFileInfo = jest.fn();
 const mockDownloadAsset = jest.fn();
 const mockMintMirisViewerKey = jest.fn();
+const mockStartMirisUpload = jest.fn();
+const mockFindRunningMirisUpload = jest.fn();
 jest.mock("../../../services/APIService", () => ({
     fetchFileInfo: (...args: unknown[]) => mockFetchFileInfo(...args),
     downloadAsset: (...args: unknown[]) => mockDownloadAsset(...args),
@@ -40,6 +42,20 @@ jest.mock("../../../services/addons/mirisAPIService", () => ({
     ...jest.requireActual("../../../services/addons/mirisAPIService"),
     getMirisStreamStatus: (...args: unknown[]) => mockGetMirisStreamStatus(...args),
     mintMirisViewerKey: (...args: unknown[]) => mockMintMirisViewerKey(...args),
+    startMirisUpload: (...args: unknown[]) => mockStartMirisUpload(...args),
+    findRunningMirisUpload: (...args: unknown[]) => mockFindRunningMirisUpload(...args),
+}));
+
+// --- Mock the Tier-1 route check ---
+const EXECUTE_ROUTE = "/workflows/{workflowDatabaseId}/{workflowId}/execute";
+const EXECUTION_DETAILS_ROUTE = "/workflows/executions/{executionId}/details";
+const ASSET_EXECUTIONS_ROUTE = "/database/{databaseId}/assets/{assetId}/workflows/executions";
+const mockCan = jest.fn();
+jest.mock("../../../features/orchestration/permissions/useAllowedRoutes", () => ({
+    useAllowedRoutes: () => ({
+        loading: false,
+        can: (...args: unknown[]) => mockCan(...args),
+    }),
 }));
 
 // --- Mock appCache ---
@@ -83,6 +99,8 @@ beforeEach(() => {
     mockAppCacheGet.mockReturnValue({ mirisViewerKey: "secure-config-key", featuresEnabled: [] });
     mockGetMirisStreamStatus.mockResolvedValue(status());
     mockMintMirisViewerKey.mockResolvedValue(staticKey());
+    mockCan.mockReturnValue(false);
+    mockFindRunningMirisUpload.mockResolvedValue([true, null]);
     mockFetchFileInfo.mockResolvedValue([
         true,
         { versions: [{ versionId: "v1", isLatest: true }] },
@@ -99,6 +117,13 @@ const baseProps = {
 };
 
 const STALE_TEXT = /built from a different version of this file/i;
+
+// secure-config of a deployment that includes the Miris upload pipeline.
+const withUploadPipeline = () =>
+    mockAppCacheGet.mockReturnValue({
+        mirisViewerKey: "secure-config-key",
+        featuresEnabled: ["MIRIS_ADDON", "MIRIS_UPLOAD"],
+    });
 
 const viewerEntry = (id: string) =>
     [
@@ -454,7 +479,7 @@ describe("MirisStreamViewerComponent", () => {
             await waitFor(() =>
                 expect(screen.getByText(/not yet streamed with miris/i)).toBeInTheDocument()
             );
-            expect(screen.getByText("miris_asset_uuid")).toBeInTheDocument();
+            expect(screen.getByText("Miris Spatial Streaming Upload")).toBeInTheDocument();
             expect(screen.queryByRole("button")).not.toBeInTheDocument();
             expect(mockLoadMirisStream).not.toHaveBeenCalled();
             expect(sceneElement()).toBeNull();
@@ -487,6 +512,422 @@ describe("MirisStreamViewerComponent", () => {
                 expect(screen.getByText(/not yet streamed with miris/i)).toBeInTheDocument()
             );
             expect(mockMintMirisViewerKey).not.toHaveBeenCalled();
+        });
+    });
+
+    describe("stream with miris", () => {
+        const NOT_STREAMED = status({
+            mirisAssetUuid: null,
+            sourceVersionId: null,
+            uploadedAt: null,
+            displayName: null,
+            state: "notStreamed",
+        });
+        const streamButton = () => screen.queryByRole("button", { name: "Stream with Miris" });
+        const clickStreamButton = () =>
+            act(() => {
+                screen.getByRole("button", { name: "Stream with Miris" }).click();
+            });
+        const waitForGuidance = () =>
+            waitFor(() =>
+                expect(screen.getByText(/not yet streamed with miris/i)).toBeInTheDocument()
+            );
+        const allowRoutes = (...allowed: string[]) =>
+            mockCan.mockImplementation((_method: string, path: string) => allowed.includes(path));
+
+        beforeEach(() => {
+            withUploadPipeline();
+            mockGetMirisStreamStatus.mockResolvedValue(NOT_STREAMED);
+            allowRoutes(EXECUTE_ROUTE, EXECUTION_DETAILS_ROUTE);
+            mockStartMirisUpload.mockResolvedValue([true, { executionId: "exec-1" }]);
+        });
+
+        afterEach(() => {
+            jest.useRealTimers();
+        });
+
+        it("offers the button to a user allowed to execute workflows", async () => {
+            render(<MirisStreamViewerComponent {...baseProps} />);
+            await waitForGuidance();
+            expect(streamButton()).toBeInTheDocument();
+            expect(mockCan).toHaveBeenCalledWith("POST", EXECUTE_ROUTE);
+            // The Needle and Automation guidance stays beside the button.
+            expect(screen.getByText("Automation")).toBeInTheDocument();
+            expect(screen.getByText("Miris Spatial Streaming Upload")).toBeInTheDocument();
+        });
+
+        it("hides the button when the deployment does not include the upload pipeline", async () => {
+            mockAppCacheGet.mockReturnValue({
+                mirisViewerKey: "secure-config-key",
+                featuresEnabled: ["MIRIS_ADDON"],
+            });
+            render(<MirisStreamViewerComponent {...baseProps} />);
+            await waitForGuidance();
+            expect(streamButton()).not.toBeInTheDocument();
+            // Neither the button nor the guidance that points to it.
+            expect(screen.queryByText("Stream with Miris")).not.toBeInTheDocument();
+            // The Needle and Automation guidance remains.
+            expect(screen.getByText("Automation")).toBeInTheDocument();
+            expect(screen.getByText("Miris Spatial Streaming Upload")).toBeInTheDocument();
+            expect(mockFindRunningMirisUpload).not.toHaveBeenCalled();
+        });
+
+        it("hides the button when secure-config carries no feature list", async () => {
+            mockAppCacheGet.mockReturnValue({ mirisViewerKey: "secure-config-key" });
+            render(<MirisStreamViewerComponent {...baseProps} />);
+            await waitForGuidance();
+            expect(streamButton()).not.toBeInTheDocument();
+            expect(screen.getByText("Automation")).toBeInTheDocument();
+        });
+
+        it("hides the button from a user not allowed to execute workflows", async () => {
+            allowRoutes(EXECUTION_DETAILS_ROUTE);
+            render(<MirisStreamViewerComponent {...baseProps} />);
+            await waitForGuidance();
+            expect(streamButton()).not.toBeInTheDocument();
+            expect(screen.getByText("Automation")).toBeInTheDocument();
+        });
+
+        it("hides the button for a file type the upload workflow does not accept", async () => {
+            mockGetMirisStreamStatus.mockResolvedValue(
+                status({ mirisAssetUuid: null, state: "notStreamed", filePath: "/folder/a.glb" })
+            );
+            render(<MirisStreamViewerComponent {...baseProps} />);
+            await waitForGuidance();
+            expect(streamButton()).not.toBeInTheDocument();
+        });
+
+        it("starts the upload for the viewed file by its asset-relative path", async () => {
+            render(<MirisStreamViewerComponent {...baseProps} />);
+            await waitForGuidance();
+            clickStreamButton();
+            await waitFor(() => expect(mockStartMirisUpload).toHaveBeenCalledTimes(1));
+            expect(mockStartMirisUpload).toHaveBeenCalledWith({
+                databaseId: "db-1",
+                assetId: "asset-1",
+                filePath: "/folder/scene.usd",
+            });
+        });
+
+        it("disables the button while the request is in flight", async () => {
+            let resolveStart: (value: unknown) => void = () => undefined;
+            mockStartMirisUpload.mockReturnValue(
+                new Promise((resolve) => {
+                    resolveStart = resolve;
+                })
+            );
+            render(<MirisStreamViewerComponent {...baseProps} />);
+            await waitForGuidance();
+            clickStreamButton();
+            await waitFor(() => expect(streamButton()).toHaveAttribute("aria-disabled", "true"));
+            clickStreamButton();
+            expect(mockStartMirisUpload).toHaveBeenCalledTimes(1);
+
+            await act(async () => {
+                resolveStart([true, { executionId: "exec-1" }]);
+            });
+            await waitFor(() =>
+                expect(screen.getByText(/upload to miris started/i)).toBeInTheDocument()
+            );
+        });
+
+        it("shows the started state with a link to the execution", async () => {
+            render(<MirisStreamViewerComponent {...baseProps} />);
+            await waitForGuidance();
+            clickStreamButton();
+            await waitFor(() =>
+                expect(screen.getByText(/upload to miris started/i)).toBeInTheDocument()
+            );
+            expect(screen.queryByText(/not yet streamed with miris/i)).not.toBeInTheDocument();
+            expect(
+                screen.getByText(/checks the stream status every 90 seconds/i)
+            ).toBeInTheDocument();
+            expect(screen.getByRole("link", { name: /view execution/i })).toHaveAttribute(
+                "href",
+                "#/executions/exec-1"
+            );
+        });
+
+        it("links no execution when the response names none", async () => {
+            mockStartMirisUpload.mockResolvedValue([true, {}]);
+            render(<MirisStreamViewerComponent {...baseProps} />);
+            await waitForGuidance();
+            clickStreamButton();
+            await waitFor(() =>
+                expect(screen.getByText(/upload to miris started/i)).toBeInTheDocument()
+            );
+            expect(screen.queryByRole("link", { name: /view execution/i })).not.toBeInTheDocument();
+        });
+
+        it("links no execution for a user who may not read execution details", async () => {
+            allowRoutes(EXECUTE_ROUTE);
+            render(<MirisStreamViewerComponent {...baseProps} />);
+            await waitForGuidance();
+            clickStreamButton();
+            await waitFor(() =>
+                expect(screen.getByText(/upload to miris started/i)).toBeInTheDocument()
+            );
+            expect(screen.queryByRole("link", { name: /view execution/i })).not.toBeInTheDocument();
+        });
+
+        it("polls the status every 90 seconds and moves to processing once the stream is recorded", async () => {
+            jest.useFakeTimers();
+            render(<MirisStreamViewerComponent {...baseProps} />);
+            await waitForGuidance();
+            clickStreamButton();
+            await waitFor(() =>
+                expect(screen.getByText(/upload to miris started/i)).toBeInTheDocument()
+            );
+            expect(mockGetMirisStreamStatus).toHaveBeenCalledTimes(1);
+
+            // Still not recorded: the started state stays and the poll continues.
+            await act(async () => {
+                jest.advanceTimersByTime(90_000);
+            });
+            expect(mockGetMirisStreamStatus).toHaveBeenCalledTimes(2);
+            expect(screen.getByText(/upload to miris started/i)).toBeInTheDocument();
+
+            mockGetMirisStreamStatus.mockResolvedValue(status({ state: "preview" }));
+            await act(async () => {
+                jest.advanceTimersByTime(90_000);
+            });
+            await waitFor(() =>
+                expect(screen.getByText(/preparing this asset/i)).toBeInTheDocument()
+            );
+            expect(screen.queryByText(/upload to miris started/i)).not.toBeInTheDocument();
+            expect(screen.getByText(/current state: preview/i)).toBeInTheDocument();
+        });
+
+        it("shows a permission message on a 403 and starts again on Retry", async () => {
+            mockStartMirisUpload
+                .mockResolvedValueOnce([false, "Forbidden", 403, undefined])
+                .mockResolvedValueOnce([true, { executionId: "exec-2" }]);
+            render(<MirisStreamViewerComponent {...baseProps} />);
+            await waitForGuidance();
+            clickStreamButton();
+            await waitFor(() =>
+                expect(
+                    screen.getByText("You don't have permission to run the Miris upload workflow.")
+                ).toBeInTheDocument()
+            );
+
+            act(() => {
+                retryButton().click();
+            });
+            await waitFor(() =>
+                expect(screen.getByText(/upload to miris started/i)).toBeInTheDocument()
+            );
+            expect(mockStartMirisUpload).toHaveBeenCalledTimes(2);
+        });
+
+        it("shows the error message for any other failure", async () => {
+            mockStartMirisUpload.mockResolvedValue([
+                false,
+                "A conflicting execution of this workflow is already running.",
+                400,
+                undefined,
+            ]);
+            render(<MirisStreamViewerComponent {...baseProps} />);
+            await waitForGuidance();
+            clickStreamButton();
+            await waitFor(() =>
+                expect(
+                    screen.getByText("A conflicting execution of this workflow is already running.")
+                ).toBeInTheDocument()
+            );
+            expect(retryButton()).toBeInTheDocument();
+            expect(streamButton()).toBeInTheDocument();
+        });
+
+        it("shows the blocking message, not a permission message, for a WAF-blocked request", async () => {
+            mockStartMirisUpload.mockResolvedValue([
+                false,
+                "Request blocked (request ID abc-123)",
+                undefined,
+                "requestBlocked",
+            ]);
+            render(<MirisStreamViewerComponent {...baseProps} />);
+            await waitForGuidance();
+            clickStreamButton();
+            await waitFor(() =>
+                expect(screen.getByText("Request blocked (request ID abc-123)")).toBeInTheDocument()
+            );
+        });
+
+        it.each([
+            ["streamable", status()],
+            ["processing", status({ state: "preview" })],
+            ["invalidUuid", status({ mirisAssetUuid: "nope", state: "invalidUuid" })],
+        ])("offers no button in the %s state", async (_label, result) => {
+            mockGetMirisStreamStatus.mockResolvedValue(result);
+            render(<MirisStreamViewerComponent {...baseProps} />);
+            await waitFor(() => expect(mockGetMirisStreamStatus).toHaveBeenCalled());
+            await waitFor(() => expect(screen.queryByText("Loading…")).not.toBeInTheDocument());
+            expect(streamButton()).not.toBeInTheDocument();
+        });
+    });
+
+    describe("upload already running", () => {
+        const NOT_STREAMED = status({
+            mirisAssetUuid: null,
+            sourceVersionId: null,
+            uploadedAt: null,
+            displayName: null,
+            state: "notStreamed",
+        });
+        const RUNNING_TEXT = /a miris upload for this asset is already running/i;
+        const running = (executionId = "exec-running") => [
+            true,
+            {
+                workflowExecutionId: executionId,
+                workflowId: "miris-upload",
+                workflowDatabaseId: "GLOBAL",
+                executionStatus: "RUNNING",
+            },
+        ];
+        const streamButton = () => screen.queryByRole("button", { name: "Stream with Miris" });
+        const waitForGuidance = () =>
+            waitFor(() =>
+                expect(screen.getByText(/not yet streamed with miris/i)).toBeInTheDocument()
+            );
+        const allowRoutes = (...allowed: string[]) =>
+            mockCan.mockImplementation((_method: string, path: string) => allowed.includes(path));
+
+        beforeEach(() => {
+            withUploadPipeline();
+            mockGetMirisStreamStatus.mockResolvedValue(NOT_STREAMED);
+            allowRoutes(EXECUTE_ROUTE, EXECUTION_DETAILS_ROUTE, ASSET_EXECUTIONS_ROUTE);
+        });
+
+        afterEach(() => {
+            jest.useRealTimers();
+        });
+
+        it("hides the button and links the run while an upload on the asset is in progress", async () => {
+            mockFindRunningMirisUpload.mockResolvedValue(running());
+            render(<MirisStreamViewerComponent {...baseProps} />);
+            await waitFor(() => expect(screen.getByText(RUNNING_TEXT)).toBeInTheDocument());
+            expect(mockFindRunningMirisUpload).toHaveBeenCalledWith({
+                databaseId: "db-1",
+                assetId: "asset-1",
+            });
+            expect(mockCan).toHaveBeenCalledWith("GET", ASSET_EXECUTIONS_ROUTE);
+            expect(streamButton()).not.toBeInTheDocument();
+            expect(screen.queryByText("Automation")).not.toBeInTheDocument();
+            expect(
+                screen.getByText(/checks the stream status every 90 seconds/i)
+            ).toBeInTheDocument();
+            expect(screen.getByRole("link", { name: /view execution/i })).toHaveAttribute(
+                "href",
+                "#/executions/exec-running"
+            );
+        });
+
+        it("links no execution for a user who may not read execution details", async () => {
+            allowRoutes(EXECUTE_ROUTE, ASSET_EXECUTIONS_ROUTE);
+            mockFindRunningMirisUpload.mockResolvedValue(running());
+            render(<MirisStreamViewerComponent {...baseProps} />);
+            await waitFor(() => expect(screen.getByText(RUNNING_TEXT)).toBeInTheDocument());
+            expect(screen.queryByRole("link", { name: /view execution/i })).not.toBeInTheDocument();
+        });
+
+        it("offers the button when no upload run is in progress", async () => {
+            render(<MirisStreamViewerComponent {...baseProps} />);
+            await waitForGuidance();
+            await waitFor(() => expect(mockFindRunningMirisUpload).toHaveBeenCalledTimes(1));
+            await waitFor(() =>
+                expect(streamButton()).not.toHaveAttribute("aria-disabled", "true")
+            );
+            expect(screen.queryByText(RUNNING_TEXT)).not.toBeInTheDocument();
+        });
+
+        it("disables the button while the lookup is in flight", async () => {
+            let resolveLookup: (value: unknown) => void = () => undefined;
+            mockFindRunningMirisUpload.mockReturnValue(
+                new Promise((resolve) => {
+                    resolveLookup = resolve;
+                })
+            );
+            render(<MirisStreamViewerComponent {...baseProps} />);
+            await waitForGuidance();
+            await waitFor(() => expect(streamButton()).toHaveAttribute("aria-disabled", "true"));
+            await act(async () => {
+                resolveLookup([true, null]);
+            });
+            await waitFor(() =>
+                expect(streamButton()).not.toHaveAttribute("aria-disabled", "true")
+            );
+        });
+
+        it("offers the button when the lookup fails", async () => {
+            mockFindRunningMirisUpload.mockResolvedValue([false, "Request failed"]);
+            render(<MirisStreamViewerComponent {...baseProps} />);
+            await waitForGuidance();
+            await waitFor(() => expect(mockFindRunningMirisUpload).toHaveBeenCalledTimes(1));
+            await waitFor(() =>
+                expect(streamButton()).not.toHaveAttribute("aria-disabled", "true")
+            );
+            expect(screen.queryByText(RUNNING_TEXT)).not.toBeInTheDocument();
+        });
+
+        it("skips the lookup for a user who may not list the asset's executions", async () => {
+            allowRoutes(EXECUTE_ROUTE, EXECUTION_DETAILS_ROUTE);
+            mockFindRunningMirisUpload.mockResolvedValue(running());
+            render(<MirisStreamViewerComponent {...baseProps} />);
+            await waitForGuidance();
+            expect(streamButton()).toBeInTheDocument();
+            expect(streamButton()).not.toHaveAttribute("aria-disabled", "true");
+            expect(mockFindRunningMirisUpload).not.toHaveBeenCalled();
+        });
+
+        it("skips the lookup when the button would not be offered", async () => {
+            allowRoutes(EXECUTION_DETAILS_ROUTE, ASSET_EXECUTIONS_ROUTE);
+            render(<MirisStreamViewerComponent {...baseProps} />);
+            await waitForGuidance();
+            expect(streamButton()).not.toBeInTheDocument();
+            expect(mockFindRunningMirisUpload).not.toHaveBeenCalled();
+        });
+
+        it("offers the button again once the run finishes without recording a stream", async () => {
+            jest.useFakeTimers();
+            mockFindRunningMirisUpload.mockResolvedValue(running());
+            render(<MirisStreamViewerComponent {...baseProps} />);
+            await waitFor(() => expect(screen.getByText(RUNNING_TEXT)).toBeInTheDocument());
+            expect(mockGetMirisStreamStatus).toHaveBeenCalledTimes(1);
+
+            // Still running: the notice stays and both checks repeat.
+            await act(async () => {
+                jest.advanceTimersByTime(90_000);
+            });
+            expect(mockGetMirisStreamStatus).toHaveBeenCalledTimes(2);
+            expect(mockFindRunningMirisUpload).toHaveBeenCalledTimes(2);
+            expect(screen.getByText(RUNNING_TEXT)).toBeInTheDocument();
+
+            mockFindRunningMirisUpload.mockResolvedValue([true, null]);
+            await act(async () => {
+                jest.advanceTimersByTime(90_000);
+            });
+            await waitFor(() => expect(streamButton()).toBeInTheDocument());
+            expect(screen.queryByText(RUNNING_TEXT)).not.toBeInTheDocument();
+            expect(screen.getByText("Automation")).toBeInTheDocument();
+        });
+
+        it("moves to processing once the run records the stream", async () => {
+            jest.useFakeTimers();
+            mockFindRunningMirisUpload.mockResolvedValue(running());
+            render(<MirisStreamViewerComponent {...baseProps} />);
+            await waitFor(() => expect(screen.getByText(RUNNING_TEXT)).toBeInTheDocument());
+
+            mockGetMirisStreamStatus.mockResolvedValue(status({ state: "preview" }));
+            await act(async () => {
+                jest.advanceTimersByTime(90_000);
+            });
+            await waitFor(() =>
+                expect(screen.getByText(/preparing this asset/i)).toBeInTheDocument()
+            );
+            expect(screen.queryByText(RUNNING_TEXT)).not.toBeInTheDocument();
+            expect(screen.getByText(/current state: preview/i)).toBeInTheDocument();
+            expect(mockFindRunningMirisUpload).toHaveBeenCalledTimes(1);
         });
     });
 
