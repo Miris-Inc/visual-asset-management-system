@@ -1,0 +1,120 @@
+#  Copyright 2026 Amazon.com, Inc. or its affiliates. All Rights Reserved.
+#  SPDX-License-Identifier: Apache-2.0
+"""Builds the Batch job definition for the Miris upload container."""
+import json
+import os
+
+from customLogging.logger import safeLogger
+
+logger = safeLogger(service="ConstructMirisUploadPipeline")
+
+MIRIS_API_BASE_URL = os.environ["MIRIS_API_BASE_URL"]
+MIRIS_API_KEY_SECRET_ARN = os.environ["MIRIS_API_KEY_SECRET_ARN"]
+MIRIS_UPLOAD_TASK_TIMEOUT_SECONDS = int(
+    os.environ.get("MIRIS_UPLOAD_TASK_TIMEOUT_SECONDS", "1800")
+)
+MIRIS_UPLOAD_MAX_ASSET_SIZE_BYTES = int(
+    os.environ.get("MIRIS_UPLOAD_MAX_ASSET_SIZE_BYTES", "5000000000")
+)
+# The extensions that trigger the pipeline; the container chooses the upload root among them.
+ALLOWED_INPUT_FILEEXTENSIONS = os.environ.get("ALLOWED_INPUT_FILEEXTENSIONS", ".usd,.usda,.usdc,.usdz")
+
+
+def _metadata_output_location(metadata_uri):
+    """Split the run's metadata output path into (bucket, prefix ending in '/').
+
+    The container writes the Miris stream metadata for the source USD file there; without
+    it a completed Miris upload would leave nothing on the file, so the run fails here,
+    before the Batch job is submitted."""
+    bucket, _, prefix = metadata_uri.replace("s3://", "", 1).partition("/")
+    if not metadata_uri.startswith("s3://") or not bucket or not prefix:
+        raise ValueError(
+            "outputS3AssetMetadataPath is missing or not an s3://bucket/prefix URI "
+            f"(got {metadata_uri!r}); the Miris upload pipeline writes its stream "
+            "metadata for the source USD file there"
+        )
+    if not prefix.endswith("/"):
+        prefix += "/"
+    return bucket, prefix
+
+
+def _asset_root_location(asset_root_uri):
+    """Split the asset root into (bucket, prefix ending in '/'). The container lists and downloads
+    the asset from there, so a run without one fails here, before the Batch job is submitted."""
+    bucket, _, prefix = (asset_root_uri or "").replace("s3://", "", 1).partition("/")
+    if not (asset_root_uri or "").startswith("s3://") or not bucket or not prefix.strip("/"):
+        raise ValueError(
+            f"assetRootS3Path is missing or not an s3://bucket/prefix URI (got {asset_root_uri!r}); "
+            "the Miris upload pipeline reads the asset's files from there"
+        )
+    if not prefix.endswith("/"):
+        prefix += "/"
+    return bucket, prefix
+
+
+def lambda_handler(event, context):
+    logger.info("ConstructMirisUploadPipeline received event")
+
+    job_name = event.get("jobName")
+    input_s3_uri = event.get("inputS3AssetFilePath", "")
+    aux_uri = event.get("inputOutputS3AssetAuxiliaryFilesPath", "")
+    metadata_uri = event.get("outputS3AssetMetadataPath", "")
+    asset_id = event.get("assetId", "")
+    database_id = event.get("databaseId", "")
+    claim_fingerprint = event.get("claimFingerprint", "")
+    input_configuration_s3_location = event.get("inputConfigurationS3Location", "")
+    miris_asset_name = event.get("mirisAssetName", "")
+
+    input_bucket, input_key = input_s3_uri.replace("s3://", "").split("/", 1)
+    metadata_bucket, metadata_key = _metadata_output_location(metadata_uri)
+    asset_root_bucket, asset_root_prefix = _asset_root_location(event.get("assetRootS3Path", ""))
+
+    _, extension = os.path.splitext(input_key)
+
+    definition = {
+        "jobName": job_name,
+        "stages": [
+            {
+                "type": "MIRIS_UPLOAD",
+                "assetId": asset_id,
+                "databaseId": database_id,
+                "triggerInput": {
+                    "bucketName": input_bucket,
+                    "objectKey": input_key,
+                    "fileExtension": extension,
+                },
+                "assetRoot": {
+                    "bucketName": asset_root_bucket,
+                    "objectDir": asset_root_prefix,
+                },
+                "rootExtensions": [
+                    ext.strip().lower()
+                    for ext in ALLOWED_INPUT_FILEEXTENSIONS.split(",")
+                    if ext.strip()
+                ],
+                "outputMetadataFiles": {
+                    "bucketName": metadata_bucket,
+                    "objectDir": metadata_key,
+                },
+                "mirisApiBaseUrl": MIRIS_API_BASE_URL,
+                "mirisApiKeySecretArn": MIRIS_API_KEY_SECRET_ARN,
+                "taskTimeoutSeconds": MIRIS_UPLOAD_TASK_TIMEOUT_SECONDS,
+                "maxAssetSizeBytes": MIRIS_UPLOAD_MAX_ASSET_SIZE_BYTES,
+                "inputConfigurationS3Location": input_configuration_s3_location,
+                "mirisAssetName": miris_asset_name,
+            }
+        ],
+    }
+
+    return {
+        "jobName": job_name,
+        "currentStageType": "MIRIS_UPLOAD",
+        "definition": [json.dumps(definition)],
+        "externalSfnTaskToken": event.get("externalSfnTaskToken", ""),
+        # The failure branch reads these off the state to release the gate's claim.
+        "databaseId": database_id,
+        "assetId": asset_id,
+        "claimFingerprint": claim_fingerprint,
+        "inputOutputS3AssetAuxiliaryFilesPath": aux_uri,
+        "status": "STARTING",
+    }

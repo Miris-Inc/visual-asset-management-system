@@ -13,11 +13,15 @@ it; this file reads that same JSON and checks it from the backend side:
   pass `MetadataSchemaFieldModel` with the value types of the Miris metadata contract;
 * the item exactly as the construct writes it reads back through the response model, and
   `get_aggregated_schemas` applies it to USD files and to no other file type;
-* a hand edit of the stream metadata validates against the aggregated schema.
+* the metadata the Miris upload pipeline writes (`backendPipelines/conversion/mirisUpload/container/
+  stream_metadata.py`) validates against the aggregated schema, so seeding the schema cannot
+  reject the pipeline's own write.
 
 The add-on's infra tests pin the synthesized template to the same JSON.
 """
 
+import datetime
+import importlib.util
 import json
 from pathlib import Path
 from unittest.mock import MagicMock
@@ -38,6 +42,9 @@ SCHEMA_PATH = (
     REPO_ROOT / "infra" / "lib" / "nestedStacks" / "addon" / "miris" / "constructs"
     / "dynamodb-metadataschema-miris-stream.json"
 )
+STREAM_METADATA_PATH = (
+    REPO_ROOT / "backendPipelines" / "conversion" / "mirisUpload" / "container" / "stream_metadata.py"
+)
 
 _TABLE = "test-metadata-schema-table"
 _CONTROL_FIELD = "everyFileField"
@@ -54,6 +61,14 @@ CONTRACT = {
 @pytest.fixture(scope="module")
 def definition():
     return json.loads(SCHEMA_PATH.read_text())
+
+
+@pytest.fixture(scope="module")
+def stream_metadata():
+    spec = importlib.util.spec_from_file_location("miris_stream_metadata", STREAM_METADATA_PATH)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
 
 @pytest.fixture(autouse=True)
@@ -193,7 +208,37 @@ class TestTheSeededItem:
 
 
 @pytest.mark.unit
-class TestHandEditsValidate:
+class TestThePipelineWriteValidates:
+
+    def _metadata(self, stream_metadata, **overrides):
+        args = {
+            "asset_uuid": "0f8fad5b-d9cb-469f-a165-70867728950e",
+            "source_version_id": "3HL4kqtJlcpXroDTDmJ.rmSpXd3dIbrHY",
+            "display_name": "model.usd",
+            "uploaded_at": datetime.datetime(2026, 10, 14, 9, 30, 15, tzinfo=datetime.timezone.utc),
+        }
+        args.update(overrides)
+        body = stream_metadata.build_stream_metadata_body(**args)
+        return {
+            entry["metadataKey"]: {
+                "metadataValue": entry["metadataValue"],
+                "metadataValueType": entry["metadataValueType"],
+            }
+            for entry in body["metadata"]
+        }
+
+    def test_the_pipeline_writes_exactly_the_schema_keys_and_types(self, stream_metadata):
+        metadata = self._metadata(stream_metadata)
+        assert {k: v["metadataValueType"] for k, v in metadata.items()} == CONTRACT
+
+    @pytest.mark.parametrize("source_version_id", ["3HL4kqtJlcpXroDTDmJ.rmSpXd3dIbrHY", ""])
+    def test_the_pipeline_write_validates_against_the_schema(
+        self, definition, stream_metadata, source_version_id
+    ):
+        aggregated = _aggregate(definition, "scene/model.usd")
+        metadata = self._metadata(stream_metadata, source_version_id=source_version_id)
+        valid, errors, _ = validate_metadata_against_schema(metadata, aggregated, "POST")
+        assert valid, errors
 
     def test_a_hand_edit_with_only_the_uuid_validates(self, definition):
         aggregated = _aggregate(definition, "scene/model.usd")
