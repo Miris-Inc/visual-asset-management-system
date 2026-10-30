@@ -365,7 +365,8 @@ export class VPCBuilderNestedStack extends NestedStack {
                 props.config.app.pipelines.useNvidiaGr00t.enabled ||
                 (props.config.app.pipelines.useGenAiCadStepAgent?.enabled &&
                     props.config.app.pipelines.useGenAiCadStepAgent.runtime === "fargate") ||
-                props.config.app.pipelines.useImageTo3d?.enabled
+                props.config.app.pipelines.useImageTo3d?.enabled ||
+                props.config.app.addons.useMirisStreaming?.upload?.enabled
             ) {
                 // Only pipelines whose compute is placed in PRIVATE subnets belong here. A pipeline
                 // running in isolated subnets reaches AWS through the interface endpoints created
@@ -706,7 +707,8 @@ export class VPCBuilderNestedStack extends NestedStack {
                 props.config.app.pipelines.useNvidiaGr00t.enabled ||
                 (props.config.app.pipelines.useGenAiCadStepAgent?.enabled &&
                     props.config.app.pipelines.useGenAiCadStepAgent.runtime === "fargate") ||
-                props.config.app.pipelines.useImageTo3d?.enabled
+                props.config.app.pipelines.useImageTo3d?.enabled ||
+                props.config.app.addons.useMirisStreaming?.upload?.enabled
             ) {
                 // Create VPC endpoint for Batch
                 new ec2.InterfaceVpcEndpoint(this, "BatchEndpoint", {
@@ -826,7 +828,8 @@ export class VPCBuilderNestedStack extends NestedStack {
             // ECS control-plane endpoint, which an EC2-launch-type container instance's agent uses, and
             // its AWS Batch jobs are Fargate — they reach ECR, Amazon S3 and CloudWatch Logs through the
             // isolated-subnet endpoints created above. Its five isolated-subnet peers are likewise
-            // absent from this list and run without it.
+            // absent from this list and run without it, as is the Miris upload pipeline, whose
+            // Fargate jobs run in the private subnets.
             const needsEcsPrivate =
                 props.config.app.pipelines.useModelOps.enabled ||
                 props.config.app.pipelines.useRapidPipeline.useEcs.enabled ||

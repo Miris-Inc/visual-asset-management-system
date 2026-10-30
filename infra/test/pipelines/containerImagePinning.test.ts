@@ -17,8 +17,7 @@
 
 import * as fs from "fs";
 import * as path from "path";
-
-const PIPELINES_DIR = path.join(__dirname, "..", "..", "lib", "nestedStacks", "pipelines");
+import { PIPELINE_SOURCE_DIRS } from "../support/addonPipelines";
 
 function typescriptFiles(dir: string): string[] {
     const out: string[] = [];
@@ -31,7 +30,7 @@ function typescriptFiles(dir: string): string[] {
 }
 
 describe("container images are pinned", () => {
-    const files = typescriptFiles(PIPELINES_DIR);
+    const files = PIPELINE_SOURCE_DIRS.flatMap((dir) => typescriptFiles(dir));
 
     it("finds the pipeline construct sources to scan", () => {
         // Control: an empty file list would make every assertion below pass vacuously.

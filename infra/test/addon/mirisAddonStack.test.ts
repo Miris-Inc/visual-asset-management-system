@@ -8,7 +8,8 @@
  *
  * With `app.addons.useMirisStreaming` off, the deployment carries no Miris resource at all. With it on,
  * the add-on nested stack registers `GET /addon/miris/asset-status` and `POST /addon/miris/viewer-key`,
- * seeds the GLOBAL "Miris stream" file metadata schema, and publishes the `MIRIS_ADDON` switch; the
+ * seeds the GLOBAL "Miris stream" file metadata schema, and publishes the `MIRIS_ADDON` switch (the
+ * upload pipeline and its `MIRIS_UPLOAD` switch follow `upload.enabled`, mirisUploadVpcPlacement); the
  * basic read-only role is seeded with both routes, and the web policy admits the Miris hosts.
  *
  * `viewerKeyMode` decides the rest. In "static" mode the deployment viewer key is set on the status
@@ -214,6 +215,11 @@ describe("Miris add-on enabled, viewerKeyMode static", () => {
         expect(recordsFeature(synth, "MIRIS_ADDON")).toBe(true);
         // Control: the detector reads the same record for a core switch the template enables.
         expect(recordsFeature(synth, "CLOUDFRONTDEPLOY")).toBe(true);
+    });
+
+    test("with upload off, no upload pipeline is built and MIRIS_UPLOAD is not recorded", () => {
+        expect(recordsFeature(synth, "MIRIS_UPLOAD")).toBe(false);
+        expect(synth.grep(/MirisUpload/)).toEqual([]);
     });
 
     test("the status Lambda carries the viewer key settings and the Integration Key ARN", () => {

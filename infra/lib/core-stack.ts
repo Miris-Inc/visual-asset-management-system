@@ -309,12 +309,17 @@ export class CoreVAMSStack extends cdk.Stack {
                 storageResources: storageResourcesNestedStack.storageResources,
                 lambdaCommonBaseLayer: lambdaLayers.lambdaCommonBaseLayer,
                 vpc: this.vpc,
+                vpceSecurityGroup: this.vpceSecurityGroup,
                 isolatedSubnets: this.subnetsIsolated,
                 privateSubnets: this.subnetsPrivate,
                 registry: apiRouteRegistry,
+                importGlobalPipelineWorkflowV2FunctionName:
+                    apiBuilder2NestedStack.importGlobalPipelineWorkflowV2FunctionName,
             });
             addonBuilderNestedStack.addStackDependency(storageResourcesNestedStack);
             addonBuilderNestedStack.addStackDependency(resourceNamesNestedStack);
+            // The V2 vamsSchema registration CRs invoke the import lambda built in ApiBuilder2.
+            addonBuilderNestedStack.addStackDependency(apiBuilder2NestedStack);
 
             this.enabledFeatures.push(...addonBuilderNestedStack.enabledFeatures);
 
@@ -482,7 +487,10 @@ export class CoreVAMSStack extends cdk.Stack {
             }
 
             let useCasefunctionNumber = 1;
-            for (const pipelineVamsExecuteLambdaFunction of pipelineBuilderNestedStack.pipelineVamsLambdaFunctionNames) {
+            for (const pipelineVamsExecuteLambdaFunction of [
+                ...pipelineBuilderNestedStack.pipelineVamsLambdaFunctionNames,
+                ...addonBuilderNestedStack.pipelineVamsLambdaFunctionNames,
+            ]) {
                 const pipelineVamsExecuteLambdaFunctionOutput = new cdk.CfnOutput(
                     this,
                     `VamsPipelineExecuteLambdaFunctionOutput_${useCasefunctionNumber}`,

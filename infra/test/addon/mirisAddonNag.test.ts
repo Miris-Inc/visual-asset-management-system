@@ -55,6 +55,14 @@ test("the perView add-on stack has no unsuppressed AwsSolutions error", () => {
         viewerKeyTtlMinutes: 15,
         apiKeySecretArn: "arn:aws:secretsmanager:us-east-1:123456789012:secret:miris-AbCdEf",
         mirisApiBaseUrl: "https://app.miris.com",
+        upload: {
+            enabled: false,
+            autoRegisterWithVAMS: true,
+            autoRegisterAutoTriggerOnFileUpload: true,
+            triggerExtensions: ".usd,.usda,.usdc,.usdz",
+            taskTimeoutSeconds: 1800,
+            maxAssetSizeBytes: 5000000000,
+        },
     };
     Service.SetConfig(config);
 

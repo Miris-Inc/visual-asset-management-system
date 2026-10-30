@@ -405,6 +405,14 @@ const COMMERCIAL: ConfigShape = {
                 viewerKeyTtlMinutes: 15,
                 apiKeySecretArn: "",
                 mirisApiBaseUrl: "https://app.miris.com",
+                upload: {
+                    enabled: false,
+                    autoRegisterWithVAMS: true,
+                    autoRegisterAutoTriggerOnFileUpload: true,
+                    triggerExtensions: ".usd,.usda,.usdc,.usdz",
+                    taskTimeoutSeconds: 1800,
+                    maxAssetSizeBytes: 5000000000,
+                },
             },
         },
         authProvider: {

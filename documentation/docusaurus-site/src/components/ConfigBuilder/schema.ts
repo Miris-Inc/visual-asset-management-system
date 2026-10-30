@@ -66,7 +66,7 @@ export const SECTIONS: Section[] = [
         id: "pipelines-gpu",
         label: "Pipelines — NVIDIA / GPU & third-party",
         description:
-            "GPU-backed pipelines: Cosmos, Gr00t, Image to 3D, Isaac Lab, Gaussian Splatting, RapidPipeline, ModelOps.",
+            "GPU-backed and third-party pipelines: Cosmos, Gr00t, Image to 3D, Isaac Lab, Gaussian Splatting, RapidPipeline, ModelOps.",
         advanced: true,
         order: 8,
     },
@@ -110,6 +110,8 @@ const mirisStatic = (c: ConfigShape) =>
     miris(c) && getByPath(c, "app.addons.useMirisStreaming.viewerKeyMode") !== "perView";
 const mirisPerView = (c: ConfigShape) =>
     miris(c) && getByPath(c, "app.addons.useMirisStreaming.viewerKeyMode") === "perView";
+const mirisUpload = (c: ConfigShape) =>
+    miris(c) && !!getByPath(c, "app.addons.useMirisStreaming.upload.enabled");
 
 /**
  * Factory for a GPU model sub-tree (Cosmos / Gr00t). Each model has enabled,
@@ -2008,7 +2010,7 @@ export const FIELDS: FieldMeta[] = [
         advanced: true,
         placeholder:
             "arn:aws:secretsmanager:us-east-1:123456789012:secret:miris-integration-key-AbCdEf",
-        help: "Required in both modes. Complete Secrets Manager ARN, including the six-character suffix, of the secret holding the Miris Integration Key. It checks that a Miris asset is bound to the VAMS asset before a viewer key is returned, and mints per-view keys.",
+        help: "Required in both modes. Complete Secrets Manager ARN, including the six-character suffix, of the secret holding the Miris Integration Key. It checks that a Miris asset is bound to the VAMS asset before a viewer key is returned, mints per-view keys, and is read by the Miris upload pipeline.",
         visibleWhen: miris,
     },
     {
@@ -2020,6 +2022,62 @@ export const FIELDS: FieldMeta[] = [
         placeholder: "https://app.miris.com",
         help: "Must be https and an external host.",
         visibleWhen: miris,
+    },
+    {
+        path: "app.addons.useMirisStreaming.upload.enabled",
+        label: "Miris upload",
+        input: "boolean",
+        section: "addons",
+        advanced: true,
+        help: "Deploys the add-on's upload pipeline, which uploads USD source files to Miris and records the Miris asset UUID in the file's metadata so the viewer can stream them, and offers the viewer's Stream with Miris button. Requires a VPC. Commercial partition only.",
+        visibleWhen: miris,
+    },
+    {
+        path: "app.addons.useMirisStreaming.upload.autoRegisterWithVAMS",
+        label: "Miris upload auto-register",
+        input: "boolean",
+        section: "addons",
+        advanced: true,
+        visibleWhen: mirisUpload,
+    },
+    {
+        path: "app.addons.useMirisStreaming.upload.autoRegisterAutoTriggerOnFileUpload",
+        label: "Miris upload auto-trigger on upload",
+        input: "boolean",
+        section: "addons",
+        advanced: true,
+        help: "Runs the pipeline when a file with a trigger extension is uploaded. Off: run it from the file manager only.",
+        visibleWhen: mirisUpload,
+    },
+    {
+        path: "app.addons.useMirisStreaming.upload.triggerExtensions",
+        label: "Miris upload trigger file extensions",
+        input: "text",
+        section: "addons",
+        advanced: true,
+        placeholder: ".usd,.usda,.usdc,.usdz",
+        help: "Comma-separated lowercase extensions. Each must be one the Miris stream file metadata schema accepts: .usd, .usda, .usdc or .usdz.",
+        visibleWhen: mirisUpload,
+    },
+    {
+        path: "app.addons.useMirisStreaming.upload.taskTimeoutSeconds",
+        label: "Miris upload task timeout (seconds)",
+        input: "number",
+        section: "addons",
+        advanced: true,
+        min: 1,
+        help: "How long the upload task may run. A positive whole number.",
+        visibleWhen: mirisUpload,
+    },
+    {
+        path: "app.addons.useMirisStreaming.upload.maxAssetSizeBytes",
+        label: "Miris upload max source size (bytes)",
+        input: "number",
+        section: "addons",
+        advanced: true,
+        min: 1,
+        help: "Largest source asset the pipeline uploads to Miris. A positive whole number.",
+        visibleWhen: mirisUpload,
     },
 
     // ===== API & Web UI =====

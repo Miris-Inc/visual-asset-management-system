@@ -7,8 +7,8 @@
  * Core aggregator files name no add-on.
  *
  * Every list VAMS aggregates (API routes, CSP sources, default-role routes, WAF rule exclusions,
- * feature switches, web routes and navigation, API service calls, viewer configuration and
- * manifest) is composed from a core part and an add-on part kept in a file of its own beside it.
+ * feature switches, nested stacks and pipelines, web routes and navigation, API service calls,
+ * viewer configuration and manifest) is composed from a core part and an add-on part kept in a file of its own beside it.
  * The core files are the ones edited on every release and by forks, so an add-on entry placed
  * back in one of them puts add-on code on the path of every core change again.
  *
@@ -29,6 +29,10 @@ const CORE_AND_ADDON_FILES: Array<{ core: string; addon: string }> = [
     },
     {
         core: "infra/lib/core-stack.ts",
+        addon: "infra/lib/nestedStacks/addon/addonBuilder-nestedStack.ts",
+    },
+    {
+        core: "infra/lib/nestedStacks/pipelines/pipelineBuilder-nestedStack.ts",
         addon: "infra/lib/nestedStacks/addon/addonBuilder-nestedStack.ts",
     },
     { core: "infra/lib/helper/security.ts", addon: "infra/lib/nestedStacks/addon/addonCsp.ts" },

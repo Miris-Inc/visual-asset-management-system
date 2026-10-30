@@ -508,19 +508,63 @@ const MIRIS_VIEWER_KEY_MIN_LENGTH = 16;
 const MIRIS_SECRET_ARN_PATTERN =
     /^arn:aws:secretsmanager:[a-z0-9-]+:\d{12}:secret:[A-Za-z0-9/_+=.@-]+-[A-Za-z0-9]{6}$/;
 
-/** Defaults for `app.addons.useMirisStreaming`, each applied when its own field is absent. */
-const MIRIS_STREAMING_DEFAULTS: ConfigPublic["app"]["addons"]["useMirisStreaming"] = {
+/**
+ * File extensions the GLOBAL "Miris stream" file metadata schema accepts: the
+ * `fileKeyTypeRestriction` of
+ * infra/lib/nestedStacks/addon/miris/constructs/dynamodb-metadataschema-miris-stream.json. The Miris
+ * upload pipeline records its result in that schema, so its trigger extensions must be a subset.
+ */
+export const MIRIS_STREAM_SCHEMA_EXTENSIONS: readonly string[] = [
+    ".usd",
+    ".usda",
+    ".usdc",
+    ".usdz",
+];
+
+/**
+ * Defaults for `app.addons.useMirisStreaming`, each applied when its own field is absent. The
+ * `upload` block has its own defaults (MIRIS_UPLOAD_DEFAULTS).
+ */
+const MIRIS_STREAMING_DEFAULTS: Omit<ConfigPublic["app"]["addons"]["useMirisStreaming"], "upload"> =
+    {
+        enabled: false,
+        viewerKeyMode: "static",
+        viewerKey: "",
+        viewerKeyTtlMinutes: 15,
+        apiKeySecretArn: "",
+        mirisApiBaseUrl: "https://app.miris.com",
+    };
+
+/** Defaults for `app.addons.useMirisStreaming.upload`, each applied when its own field is absent. */
+const MIRIS_UPLOAD_DEFAULTS: ConfigPublic["app"]["addons"]["useMirisStreaming"]["upload"] = {
     enabled: false,
-    viewerKeyMode: "static",
-    viewerKey: "",
-    viewerKeyTtlMinutes: 15,
-    apiKeySecretArn: "",
-    mirisApiBaseUrl: "https://app.miris.com",
+    autoRegisterWithVAMS: true,
+    autoRegisterAutoTriggerOnFileUpload: true,
+    triggerExtensions: MIRIS_STREAM_SCHEMA_EXTENSIONS.join(","),
+    taskTimeoutSeconds: 1800,
+    maxAssetSizeBytes: 5_000_000_000,
 };
 
 /** A string setting the operator left unset: missing, empty, or the template placeholder. */
 function isUnsetConfigString(value: unknown): boolean {
     return value === undefined || value === null || value === "" || value === "UNDEFINED";
+}
+
+/**
+ * Splits `app.addons.useMirisStreaming.upload.triggerExtensions` into its extensions, or returns undefined
+ * when the value is not a comma-separated list of lowercase extensions such as ".usd,.usdz".
+ */
+function parseMirisTriggerExtensions(value: unknown): string[] | undefined {
+    if (typeof value !== "string") return undefined;
+    const extensions = value.split(",");
+    return extensions.every((extension) => /^\.[a-z0-9]+$/.test(extension))
+        ? extensions
+        : undefined;
+}
+
+/** True for a whole number greater than zero. */
+function isPositiveInteger(value: unknown): boolean {
+    return typeof value === "number" && Number.isInteger(value) && value > 0;
 }
 
 /**
@@ -1416,12 +1460,34 @@ export function getConfig(app: cdk.App): Config {
     }
 
     if (config.app.addons.useMirisStreaming == undefined) {
-        config.app.addons.useMirisStreaming = { ...MIRIS_STREAMING_DEFAULTS };
+        config.app.addons.useMirisStreaming = {
+            ...MIRIS_STREAMING_DEFAULTS,
+            upload: { ...MIRIS_UPLOAD_DEFAULTS },
+        };
     }
     const mirisStreaming: Record<string, unknown> = config.app.addons.useMirisStreaming;
     for (const [field, value] of Object.entries(MIRIS_STREAMING_DEFAULTS)) {
         if (mirisStreaming[field] == undefined) {
             mirisStreaming[field] = value;
+        }
+    }
+
+    // The Miris upload pipeline is configured under the Miris Spatial Streaming add-on. A config
+    // that still carries the block under app.pipelines would otherwise deploy without the pipeline.
+    if ((config.app.pipelines as Record<string, unknown>)?.useMirisUpload !== undefined) {
+        throw new Error(
+            "Configuration Error: app.pipelines.useMirisUpload is not read. The Miris upload " +
+                "pipeline is configured by the Miris Spatial Streaming add-on: move this block to " +
+                "app.addons.useMirisStreaming.upload, whose fields are the same."
+        );
+    }
+    if (config.app.addons.useMirisStreaming.upload == undefined) {
+        config.app.addons.useMirisStreaming.upload = { ...MIRIS_UPLOAD_DEFAULTS };
+    }
+    const mirisUpload: Record<string, unknown> = config.app.addons.useMirisStreaming.upload;
+    for (const [field, value] of Object.entries(MIRIS_UPLOAD_DEFAULTS)) {
+        if (mirisUpload[field] == undefined) {
+            mirisUpload[field] = value;
         }
     }
 
@@ -1617,13 +1683,15 @@ export function getConfig(app: cdk.App): Config {
         autoRegisterWithVAMS?: boolean;
         autoRegisterAutoTriggerOnFileUpload?: boolean;
     }>({
-        useConversionCadMeshMetadataExtraction:
+        "pipelines.useConversionCadMeshMetadataExtraction":
             config.app.pipelines.useConversionCadMeshMetadataExtraction,
-        useConversionCoordinateTransform: config.app.pipelines.useConversionCoordinateTransform,
-        useGenAiCadStepAgent: config.app.pipelines.useGenAiCadStepAgent,
-        usePreviewPcPotreeViewer: config.app.pipelines.usePreviewPcPotreeViewer,
-        usePreview3dThumbnail: config.app.pipelines.usePreview3dThumbnail,
-        useGenAiMetadata3dLabeling: config.app.pipelines.useGenAiMetadata3dLabeling,
+        "pipelines.useConversionCoordinateTransform":
+            config.app.pipelines.useConversionCoordinateTransform,
+        "pipelines.useGenAiCadStepAgent": config.app.pipelines.useGenAiCadStepAgent,
+        "pipelines.usePreviewPcPotreeViewer": config.app.pipelines.usePreviewPcPotreeViewer,
+        "pipelines.usePreview3dThumbnail": config.app.pipelines.usePreview3dThumbnail,
+        "pipelines.useGenAiMetadata3dLabeling": config.app.pipelines.useGenAiMetadata3dLabeling,
+        "addons.useMirisStreaming.upload": config.app.addons.useMirisStreaming.upload,
     })) {
         if (
             block?.enabled &&
@@ -1631,7 +1699,7 @@ export function getConfig(app: cdk.App): Config {
             block.autoRegisterWithVAMS !== true
         ) {
             console.warn(
-                `Configuration Warning: pipelines.${name}.autoRegisterAutoTriggerOnFileUpload is true but ` +
+                `Configuration Warning: ${name}.autoRegisterAutoTriggerOnFileUpload is true but ` +
                     "autoRegisterWithVAMS is not, so no registration and no upload trigger are created. " +
                     "Set autoRegisterWithVAMS to true to arm the trigger."
             );
@@ -2142,6 +2210,8 @@ export function getConfig(app: cdk.App): Config {
         vpcRequiringFeatures.push("pipelines.useGenAiVideoSopBom");
     if (config.app.pipelines.useGenAiCadStepAgent.enabled)
         vpcRequiringFeatures.push("pipelines.useGenAiCadStepAgent");
+    if (config.app.addons.useMirisStreaming.upload.enabled)
+        vpcRequiringFeatures.push("addons.useMirisStreaming.upload");
 
     if (vpcRequiringFeatures.length > 0 && !config.app.useGlobalVpc.enabled) {
         throw new Error(
@@ -2998,7 +3068,8 @@ export function getConfig(app: cdk.App): Config {
             config.app.pipelines.useNvidiaCosmos.enabled ||
             config.app.pipelines.useNvidiaCosmos3?.enabled ||
             config.app.pipelines.useNvidiaGr00t.enabled ||
-            config.app.pipelines.useImageTo3d?.enabled
+            config.app.pipelines.useImageTo3d?.enabled ||
+            config.app.addons.useMirisStreaming.upload.enabled
         ) {
             if (
                 !config.app.useGlobalVpc.optionalExternalPrivateSubnetIds ||
@@ -4116,6 +4187,58 @@ export function getConfig(app: cdk.App): Config {
         }
     }
 
+    // Miris upload pipeline validation. The pipeline reads the Integration Key secret and the Miris
+    // API base URL from the Miris Spatial Streaming add-on, and records the Miris asset UUID in file
+    // metadata that the add-on's viewer streams.
+    if (config.app.addons.useMirisStreaming.upload.enabled) {
+        const upload = config.app.addons.useMirisStreaming.upload;
+        const miris = config.app.addons.useMirisStreaming;
+
+        if (!miris.enabled) {
+            throw new Error(
+                "Configuration Error: addons.useMirisStreaming.upload requires " +
+                    "app.addons.useMirisStreaming.enabled = true. The pipeline reads the Miris " +
+                    "Integration Key and API base URL from the add-on, and the assets it uploads are " +
+                    "viewed through the add-on's viewer."
+            );
+        }
+        for (const field of ["taskTimeoutSeconds", "maxAssetSizeBytes"] as const) {
+            const value: unknown = upload[field];
+            if (!isPositiveInteger(value)) {
+                throw new Error(
+                    `Configuration Error: addons.useMirisStreaming.upload.${field} must be a positive ` +
+                        `whole number; got ${JSON.stringify(value)}.`
+                );
+            }
+        }
+        if (typeof upload.triggerExtensions === "string" && /\s/.test(upload.triggerExtensions)) {
+            throw new Error(
+                "Configuration Error: addons.useMirisStreaming.upload.triggerExtensions must not contain " +
+                    'whitespace. List the extensions separated by commas only, such as ".usd,.usdz"; ' +
+                    `got ${JSON.stringify(upload.triggerExtensions)}.`
+            );
+        }
+        const triggerExtensions = parseMirisTriggerExtensions(upload.triggerExtensions);
+        if (triggerExtensions == undefined) {
+            throw new Error(
+                "Configuration Error: addons.useMirisStreaming.upload.triggerExtensions must be a " +
+                    'comma-separated list of lowercase file extensions, such as ".usd,.usdz"; got ' +
+                    `${JSON.stringify(upload.triggerExtensions)}.`
+            );
+        }
+        const unsupportedExtensions = triggerExtensions.filter(
+            (extension) => !MIRIS_STREAM_SCHEMA_EXTENSIONS.includes(extension)
+        );
+        if (unsupportedExtensions.length > 0) {
+            throw new Error(
+                "Configuration Error: addons.useMirisStreaming.upload.triggerExtensions may only list " +
+                    "extensions the Miris stream file metadata schema accepts " +
+                    `(${MIRIS_STREAM_SCHEMA_EXTENSIONS.join(", ")}); got ` +
+                    `${unsupportedExtensions.join(", ")}.`
+            );
+        }
+    }
+
     return config;
 }
 
@@ -5097,6 +5220,14 @@ export interface ConfigPublic {
                 viewerKeyTtlMinutes: number;
                 apiKeySecretArn: string;
                 mirisApiBaseUrl: string;
+                upload: {
+                    enabled: boolean;
+                    autoRegisterWithVAMS: boolean;
+                    autoRegisterAutoTriggerOnFileUpload: boolean;
+                    triggerExtensions: string;
+                    taskTimeoutSeconds: number;
+                    maxAssetSizeBytes: number;
+                };
             };
         };
         authProvider: {

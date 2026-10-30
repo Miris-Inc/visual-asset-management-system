@@ -4,9 +4,12 @@
  */
 
 /**
- * `getConfig()` rules for the Miris Spatial Streaming add-on (`app.addons.useMirisStreaming`):
- * defaults, the partition gate, the unsafe-eval requirement, the viewer key mode and lifetime, the
- * viewer key and Integration Key secret ARN formats, and the outbound check on `mirisApiBaseUrl`.
+ * `getConfig()` rules for the Miris Spatial Streaming add-on (`app.addons.useMirisStreaming`) and its
+ * upload pipeline (`app.addons.useMirisStreaming.upload`): defaults, the partition gate, the
+ * unsafe-eval requirement, the viewer key mode and lifetime, the viewer key and Integration Key
+ * secret ARN formats, the outbound check on `mirisApiBaseUrl`, and the upload pipeline's dependency
+ * on the add-on, its VPC requirements and its settings, and the rejection of the upload block under
+ * `app.pipelines`.
  *
  * Every rejection asserts on the MESSAGE. A Miris config can be invalid in several ways at once, so a
  * bare `.toThrow()` would pass while the rule under test did nothing. The ConfigBuilder's hand-ported
@@ -21,7 +24,10 @@ import eusovereignTemplate from "../../config/config.template.eusovereign.json";
 import govcloudTemplate from "../../config/config.template.govcloud.json";
 import { newTestApp } from "../support/testApp";
 import { makeDefaultConfig } from "../../../documentation/docusaurus-site/src/components/ConfigBuilder/defaults";
-import { evaluateRules } from "../../../documentation/docusaurus-site/src/components/ConfigBuilder/validation";
+import {
+    evaluateRules,
+    MIRIS_STREAM_SCHEMA_EXTENSIONS as BUILDER_SCHEMA_EXTENSIONS,
+} from "../../../documentation/docusaurus-site/src/components/ConfigBuilder/validation";
 
 const realReadFileSync = jest.requireActual("fs").readFileSync;
 
@@ -99,6 +105,13 @@ function enablePerView(c: any) {
     c.app.addons.useMirisStreaming.viewerKey = "";
 }
 
+/** The upload pipeline runs on AWS Fargate in the global VPC's private subnets. */
+function enableUpload(c: any) {
+    enableStatic(c);
+    c.app.useGlobalVpc.enabled = true;
+    c.app.addons.useMirisStreaming.upload.enabled = true;
+}
+
 /** Everything a restricted-partition template needs to pass getConfig() before the Miris rules. */
 function restrictedPartitionDeployable(c: any) {
     c.app.useGlobalVpc.enabled = true;
@@ -122,7 +135,7 @@ function mirisWarnings(): string[] {
 
 describe("shipped templates", () => {
     test.each(Object.keys(TEMPLATES) as (keyof typeof TEMPLATES)[])(
-        "the %s template passes getConfig() with the Miris add-on disabled",
+        "the %s template passes getConfig() with both Miris blocks disabled",
         (name) => {
             const config = resolve(() => undefined, name)();
             expect(config.app.addons.useMirisStreaming).toEqual({
@@ -132,6 +145,14 @@ describe("shipped templates", () => {
                 viewerKeyTtlMinutes: 15,
                 apiKeySecretArn: "",
                 mirisApiBaseUrl: "https://app.miris.com",
+                upload: {
+                    enabled: false,
+                    autoRegisterWithVAMS: true,
+                    autoRegisterAutoTriggerOnFileUpload: true,
+                    triggerExtensions: ".usd,.usda,.usdc,.usdz",
+                    taskTimeoutSeconds: 1800,
+                    maxAssetSizeBytes: 5000000000,
+                },
             });
         }
     );
@@ -141,6 +162,7 @@ describe("shipped templates", () => {
         (profile) => {
             const ids = evaluateRules(makeDefaultConfig(profile)).map((rule) => rule.id);
             expect(ids.filter((id) => id.startsWith("miris-"))).toEqual([]);
+            expect(ids).not.toContain("vpc-required-miris-upload");
         }
     );
 });
@@ -153,6 +175,10 @@ describe("defaults", () => {
         expect(config.app.addons.useMirisStreaming.viewerKeyMode).toBe("static");
         expect(config.app.addons.useMirisStreaming.viewerKeyTtlMinutes).toBe(15);
         expect(config.app.addons.useMirisStreaming.mirisApiBaseUrl).toBe("https://app.miris.com");
+        expect(config.app.addons.useMirisStreaming.upload.triggerExtensions).toBe(
+            ".usd,.usda,.usdc,.usdz"
+        );
+        expect(config.app.addons.useMirisStreaming.upload.taskTimeoutSeconds).toBe(1800);
     });
 
     test("each missing field is filled on its own", () => {
@@ -160,6 +186,7 @@ describe("defaults", () => {
             c.app.addons.useMirisStreaming = {
                 enabled: false,
                 viewerKeyTtlMinutes: 30,
+                upload: { enabled: false, autoRegisterWithVAMS: false },
             };
         })();
         expect(config.app.addons.useMirisStreaming).toEqual({
@@ -169,10 +196,37 @@ describe("defaults", () => {
             viewerKeyTtlMinutes: 30,
             apiKeySecretArn: "",
             mirisApiBaseUrl: "https://app.miris.com",
+            upload: {
+                enabled: false,
+                autoRegisterWithVAMS: false,
+                autoRegisterAutoTriggerOnFileUpload: true,
+                triggerExtensions: ".usd,.usda,.usdc,.usdz",
+                taskTimeoutSeconds: 1800,
+                maxAssetSizeBytes: 5000000000,
+            },
         });
     });
 
-    test("a disabled add-on with stale invalid fields is not validated", () => {
+    test("an add-on block without upload gets the upload defaults", () => {
+        const config = resolve((c) => {
+            c.app.addons.useMirisStreaming = { enabled: false };
+        })();
+        expect(config.app.addons.useMirisStreaming.upload).toEqual({
+            enabled: false,
+            autoRegisterWithVAMS: true,
+            autoRegisterAutoTriggerOnFileUpload: true,
+            triggerExtensions: ".usd,.usda,.usdc,.usdz",
+            taskTimeoutSeconds: 1800,
+            maxAssetSizeBytes: 5000000000,
+        });
+    });
+
+    test("the default trigger extensions are the schema extension list", () => {
+        expect(Config.MIRIS_STREAM_SCHEMA_EXTENSIONS.join(",")).toBe(".usd,.usda,.usdc,.usdz");
+        expect(BUILDER_SCHEMA_EXTENSIONS).toEqual([...Config.MIRIS_STREAM_SCHEMA_EXTENSIONS]);
+    });
+
+    test("a disabled add-on and pipeline with stale invalid fields are not validated", () => {
         const mutate = (c: any) => {
             c.app.addons.useMirisStreaming = {
                 enabled: false,
@@ -181,6 +235,12 @@ describe("defaults", () => {
                 viewerKeyTtlMinutes: 0,
                 apiKeySecretArn: "not-an-arn",
                 mirisApiBaseUrl: "http://169.254.169.254",
+                upload: {
+                    enabled: false,
+                    triggerExtensions: ".glb",
+                    taskTimeoutSeconds: -1,
+                    maxAssetSizeBytes: 1.5,
+                },
             };
         };
         expect(resolve(mutate)).not.toThrow();
@@ -496,5 +556,207 @@ describe("Miris Spatial Streaming add-on", () => {
             );
             expect(builderRules(mutate, "miris-baseurl-")).toEqual(["miris-baseurl-private-host"]);
         });
+    });
+});
+
+describe("Miris upload pipeline", () => {
+    test.each([true, false])(
+        "an upload block under app.pipelines (enabled: %s) is rejected with the add-on path",
+        (enabled) => {
+            const mutate = (c: { app: { pipelines: Record<string, unknown> } }) => {
+                c.app.pipelines.useMirisUpload = { enabled };
+            };
+            expect(resolve(mutate)).toThrow(
+                /app\.pipelines\.useMirisUpload is not read\..*move this block to app\.addons\.useMirisStreaming\.upload/
+            );
+        }
+    );
+
+    test("is accepted with the add-on, its Integration Key secret and the global VPC", () => {
+        const config = resolve(enableUpload)();
+        expect(config.app.addons.useMirisStreaming.upload.enabled).toBe(true);
+        expect(builderRules(enableUpload, "miris-")).toEqual([]);
+        expect(builderRules(enableUpload, "vpc-")).toEqual([]);
+    });
+
+    test("is accepted with the add-on in perView mode", () => {
+        const mutate = (c: any) => {
+            enableUpload(c);
+            c.app.addons.useMirisStreaming.viewerKeyMode = "perView";
+            c.app.addons.useMirisStreaming.viewerKey = "";
+        };
+        expect(resolve(mutate)().app.addons.useMirisStreaming.upload.enabled).toBe(true);
+        expect(builderRules(mutate, "miris-")).toEqual([]);
+    });
+
+    test("is rejected without the add-on", () => {
+        const mutate = (c: any) => {
+            enableUpload(c);
+            c.app.addons.useMirisStreaming.enabled = false;
+        };
+        expect(resolve(mutate)).toThrow(
+            /addons\.useMirisStreaming\.upload requires app\.addons\.useMirisStreaming\.enabled = true/
+        );
+        expect(builderRules(mutate, "miris-")).toEqual(["miris-upload-requires-addon"]);
+    });
+
+    test("is rejected when the add-on's Integration Key secret is missing", () => {
+        // The add-on block runs first and names the missing secret.
+        const mutate = (c: any) => {
+            enableUpload(c);
+            c.app.addons.useMirisStreaming.apiKeySecretArn = "";
+        };
+        expect(resolve(mutate)).toThrow(
+            /addons\.useMirisStreaming requires apiKeySecretArn, the Secrets Manager ARN of the Miris Integration Key/
+        );
+        expect(builderRules(mutate, "miris-")).toEqual(["miris-secret-required"]);
+    });
+
+    test.each(["govcloud", "eusovereign"] as const)("the %s partition is rejected", (template) => {
+        const mutate = (c: any) => {
+            restrictedPartitionDeployable(c);
+            enableUpload(c);
+        };
+        // The add-on block runs first and rejects the partition for both.
+        expect(resolve(mutate, template)).toThrow(
+            /addons\.useMirisStreaming is enabled while deploying to the 'aws-(us-gov|eusc)' partition/
+        );
+        expect(builderRules(mutate, "miris-", template)).toEqual([
+            "miris-commercial-partition-only",
+        ]);
+    });
+
+    test("requires the global VPC", () => {
+        const mutate = (c: any) => {
+            enableUpload(c);
+            c.app.useGlobalVpc.enabled = false;
+        };
+        expect(resolve(mutate)).toThrow(
+            /app\.useGlobalVpc\.enabled must be true because the following enabled feature\(s\) require a VPC: addons\.useMirisStreaming\.upload\./
+        );
+        expect(builderRules(mutate, "vpc-required-")).toEqual(["vpc-required-miris-upload"]);
+    });
+
+    test("[control] the add-on alone does not require the global VPC", () => {
+        expect(resolve(enableStatic)().app.useGlobalVpc.enabled).toBe(false);
+        expect(builderRules(enableStatic, "vpc-required-")).toEqual([]);
+    });
+
+    test("requires a private subnet in an external VPC", () => {
+        const mutate = (c: any) => {
+            enableUpload(c);
+            c.app.useGlobalVpc.optionalExternalVpcId = "vpc-0123456789abcdef0";
+            c.app.useGlobalVpc.optionalExternalIsolatedSubnetIds = "subnet-0123456789abcdef0";
+        };
+        expect(resolve(mutate)).toThrow(
+            /Must define at least one private subnet ID when using a pipeline that requires private subnets/
+        );
+        expect(builderRules(mutate, "vpc-private-subnets")).toEqual(["vpc-private-subnets"]);
+    });
+
+    test("warns when the upload trigger is armed without registration", () => {
+        const mutate = (c: any) => {
+            enableUpload(c);
+            c.app.addons.useMirisStreaming.upload.autoRegisterWithVAMS = false;
+        };
+        resolve(mutate)();
+        expect(warn.mock.calls.map((args) => String(args[0]))).toContainEqual(
+            expect.stringMatching(
+                /addons\.useMirisStreaming\.upload\.autoRegisterAutoTriggerOnFileUpload is true but autoRegisterWithVAMS is not/
+            )
+        );
+        expect(builderRules(mutate, "pipeline-armed-trigger-unregistered-")).toEqual([
+            "pipeline-armed-trigger-unregistered-addons-useMirisStreaming-upload",
+        ]);
+    });
+
+    describe.each([
+        ["taskTimeoutSeconds", "miris-upload-task-timeout"],
+        ["maxAssetSizeBytes", "miris-upload-max-asset-size"],
+    ])("%s", (field, ruleId) => {
+        test.each([1, 1800, 5_000_000_000])("%p is accepted", (value) => {
+            const mutate = (c: any) => {
+                enableUpload(c);
+                c.app.addons.useMirisStreaming.upload[field] = value;
+            };
+            expect((resolve(mutate)().app.addons.useMirisStreaming.upload as any)[field]).toBe(
+                value
+            );
+            expect(builderRules(mutate, "miris-upload-")).toEqual([]);
+        });
+
+        test.each([0, -1, 1.5, "1800", true])("%p is rejected", (value) => {
+            const mutate = (c: any) => {
+                enableUpload(c);
+                c.app.addons.useMirisStreaming.upload[field] = value;
+            };
+            expect(resolve(mutate)).toThrow(
+                new RegExp(
+                    `addons\\.useMirisStreaming\\.upload\\.${field} must be a positive whole number`
+                )
+            );
+            expect(builderRules(mutate, "miris-upload-")).toEqual([ruleId]);
+        });
+    });
+
+    describe("triggerExtensions", () => {
+        test.each([".usd", ".usdz,.usd", ".usd,.usda,.usdc,.usdz"])("%p is accepted", (value) => {
+            const mutate = (c: any) => {
+                enableUpload(c);
+                c.app.addons.useMirisStreaming.upload.triggerExtensions = value;
+            };
+            expect(resolve(mutate)().app.addons.useMirisStreaming.upload.triggerExtensions).toBe(
+                value
+            );
+            expect(builderRules(mutate, "miris-upload-")).toEqual([]);
+        });
+
+        test.each([" .usd , .usdz ", ".usd, .usda", " ", ".usd\t", "\n.usd"])(
+            "%p is rejected for its whitespace rather than trimmed",
+            (value) => {
+                const mutate = (c: any) => {
+                    enableUpload(c);
+                    c.app.addons.useMirisStreaming.upload.triggerExtensions = value;
+                };
+                expect(resolve(mutate)).toThrow(
+                    /addons\.useMirisStreaming\.upload\.triggerExtensions must not contain whitespace/
+                );
+                expect(builderRules(mutate, "miris-upload-")).toEqual([
+                    "miris-upload-trigger-extensions-whitespace",
+                ]);
+            }
+        );
+
+        test.each(["", "usd", ".USD", ".usd,", ".usd,,.usdz", "*.usd", [".usd"], 5])(
+            "%p is rejected as malformed",
+            (value) => {
+                const mutate = (c: any) => {
+                    enableUpload(c);
+                    c.app.addons.useMirisStreaming.upload.triggerExtensions = value;
+                };
+                expect(resolve(mutate)).toThrow(
+                    /addons\.useMirisStreaming\.upload\.triggerExtensions must be a comma-separated list of lowercase file extensions/
+                );
+                expect(builderRules(mutate, "miris-upload-")).toEqual([
+                    "miris-upload-trigger-extensions-format",
+                ]);
+            }
+        );
+
+        test.each([".glb", ".usd,.obj"])(
+            "%p is rejected as outside the Miris stream metadata schema",
+            (value) => {
+                const mutate = (c: any) => {
+                    enableUpload(c);
+                    c.app.addons.useMirisStreaming.upload.triggerExtensions = value;
+                };
+                expect(resolve(mutate)).toThrow(
+                    /addons\.useMirisStreaming\.upload\.triggerExtensions may only list extensions the Miris stream file metadata schema accepts \(\.usd, \.usda, \.usdc, \.usdz\)/
+                );
+                expect(builderRules(mutate, "miris-upload-")).toEqual([
+                    "miris-upload-trigger-extensions-schema",
+                ]);
+            }
+        );
     });
 });
