@@ -103,7 +103,7 @@ web/
       appCache.ts           # Replaces Amplify Cache for runtime config
       webRoutesCheck.ts     # Batched + cached web-route (Tier-1) checks for routes.tsx/Navigation
       addons/physnaAPIService.ts  # Add-on API calls (Physna viewer metadata)
-      addons/mirisAPIService.ts   # Add-on API calls (Miris stream status, viewer key)
+      addons/mirisAPIService.ts   # Add-on API calls (Miris stream status, viewer key, upload start)
 
     addons/                 # Add-on web lane (shipped empty): addonRoutes.tsx, addonNavigation.ts
     custom/                 # FORK EXTENSION POINT (shipped empty, never edited upstream)

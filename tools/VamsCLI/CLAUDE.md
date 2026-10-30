@@ -27,7 +27,7 @@ tools/VamsCLI/
     main.py                  # CLI entry point, @click.group, command registration (+ CUSTOM_COMMANDS)
     version.py               # __version__ and CLI_VERSION
     constants.py             # All API endpoints, limits, config constants (re-exports addon_constants)
-    addon_constants.py       # Add-on FEATURE_* names (FEATURE_PHYSNA_ADDON, FEATURE_MIRIS_ADDON), mirrors infra/common/addonAppFeatures.ts
+    addon_constants.py       # Add-on FEATURE_* names (FEATURE_PHYSNA_ADDON, FEATURE_MIRIS_ADDON, FEATURE_MIRIS_UPLOAD), mirrors infra/common/addonAppFeatures.ts
     custom_constants.py      # FORK EXTENSION POINT: a fork's API_* paths + FEATURE_CUSTOM_* (shipped empty)
     auth/
       base.py                # BaseAuthenticator abstract class
@@ -1104,6 +1104,7 @@ constant is a gate no command can name, and an extra one names a gate no deploym
 | `FEATURE_AUTHPROVIDER_EXTERNALOAUTHIDP`       | `"AUTHPROVIDER_EXTERNALOAUTHIDP"` | External OAuth IDP       |
 | `FEATURE_PHYSNA_ADDON` (`addon_constants.py`) | `"PHYSNA_ADDON"`                  | Physna add-on features   |
 | `FEATURE_MIRIS_ADDON` (`addon_constants.py`)  | `"MIRIS_ADDON"`                   | Miris streaming add-on   |
+| `FEATURE_MIRIS_UPLOAD` (`addon_constants.py`) | `"MIRIS_UPLOAD"`                  | Miris upload pipeline    |
 | `FEATURE_DEADLINECLOUD_PIPELINES`             | `"DEADLINECLOUD_PIPELINES"`       | Deadline Cloud exec type |
 
 ---

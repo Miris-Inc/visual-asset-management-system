@@ -14,7 +14,7 @@ tools/VamsCLI/
 │   ├── main.py              # CLI entry point with global options
 │   ├── version.py           # Version management
 │   ├── constants.py         # ALL API endpoints and configuration constants (re-exports addon_constants)
-│   ├── addon_constants.py   # Add-on FEATURE_* names (FEATURE_PHYSNA_ADDON, FEATURE_MIRIS_ADDON), mirrors infra/common/addonAppFeatures.ts
+│   ├── addon_constants.py   # Add-on FEATURE_* names (FEATURE_PHYSNA_ADDON, FEATURE_MIRIS_ADDON, FEATURE_MIRIS_UPLOAD), mirrors infra/common/addonAppFeatures.ts
 │   ├── custom_constants.py  # FORK EXTENSION POINT: a fork's API_* paths + FEATURE_CUSTOM_* (shipped empty)
 │   ├── auth/                # Authentication providers
 │   │   ├── __init__.py

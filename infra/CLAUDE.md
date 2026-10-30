@@ -26,7 +26,7 @@ infra/
   bin/infra.ts                  # CDK app entry point
   common/
     vamsAppFeatures.ts          # VAMS_APP_FEATURES enum (core switches)
-    addonAppFeatures.ts         # ADDON_APP_FEATURES enum (PHYSNA_ADDON, MIRIS_ADDON), pushed by AddonBuilderNestedStack
+    addonAppFeatures.ts         # ADDON_APP_FEATURES enum (PHYSNA_ADDON, MIRIS_ADDON, MIRIS_UPLOAD), pushed by AddonBuilderNestedStack
     resourceParamKeys.ts        # SSM key constants (mirrored in backend/common/resourceNames.py)
     addonResourceParamKeys.ts   # Add-on SSM keys (Miris viewer-key table; mirrored in backend/common/addonResourceNames.py)
     customAppFeatures.ts        # FORK EXTENSION POINT: CUSTOM_APP_FEATURES enum (shipped empty)
@@ -105,7 +105,8 @@ infra/
       featureEnabled/custom-featureEnabled-config-nestedStack.ts
       locationService/location-service-nestedStack.ts    # Amazon Location Service (commercial only)
       addon/
-        addonBuilder-nestedStack.ts        # Addon orchestrator; enabledFeatures (ADDON_APP_FEATURES, rejects core values) pushed by core-stack
+        addonBuilder-nestedStack.ts        # Addon orchestrator; enabledFeatures (ADDON_APP_FEATURES, rejects core values) pushed by core-stack;
+                                           # pipelineVamsLambdaFunctionNames of add-on pipelines, output by core-stack
         addonStackHelpers.ts               # publishAddonResourceName() (rejects a core or custom key)
         addonCsp.ts                        # addonCspSources(): add-on connect-src, frame-src and script-src sources, merged by security.ts
         addonWafExclusions.ts              # addonWafRuleExclusions(): scoped rule exclusions for the regional ACL, passed by buildWafStacks() (shipped empty)
@@ -114,6 +115,9 @@ infra/
         garnetFramework/                   # Garnet NGSI-LD digital twin framework
         miris/                             # Miris Spatial Streaming (mirisBuilder-nestedStack.ts: asset-status + viewer-key routes,
                                            # perView viewer-key table + TTL cleanup stream, "Miris stream" metadata schema seed)
+          upload/                          # Miris upload pipeline (mirisUploadBuilder-nestedStack.ts, a sibling of MirisBuilder,
+                                           # built with its own PipelineNetwork when useMirisStreaming.upload.enabled; source in
+                                           # backendPipelines/conversion/mirisUpload)
         physna/                            # Physna 3D/CAD geometric search sync (builds physnaFileSync, physnaAssetSync, physnaViewer lambdas for addon API)
       custom/
         customBuilder-nestedStack.ts       # CustomBuilder: placeholder handle + calls buildCustomResources(); rejects anonymous custom routes and core/add-on feature values
@@ -122,11 +126,14 @@ infra/
   test/                          # Jest suites: route registry, OpenAPI spec, config-builder drift, WAF,
                                  # lambda grants, presigned-URL policy, migration tooling, plus the legacy
                                  # infra.test.ts snapshot (uses the outdated @aws-cdk/assert)
+    support/addonPipelines.ts    # ADDON_PIPELINES / PIPELINE_SOURCE_DIRS: the add-on pipeline CDK dirs every
+                                 # pipeline source guard scans beside lib/nestedStacks/pipelines
     apiStackCeilings.test.ts     # Grounds the API-stack-split figures + app-wide log retention
                                  # against the synthesized templates
     pipelines/batchLogRegistrationEnvFargate.test.ts  # Per-pipeline synth: registering-lambda env + every
                                  # producer-declared *_STATE_NAME is a key of the ASL States
-                                 # (3dThumbnail, pcPotreeViewer, metadata3dLabeling, coordinateTransform)
+                                 # (3dThumbnail, pcPotreeViewer, metadata3dLabeling, coordinateTransform,
+                                 # videoSopBom, mirisUpload)
     pipelines/batchLogRegistrationEnvGpu.test.ts  # Same for splatToolbox, cosmos x4 (the COSMOS_BATCH_STATE_NAME
                                  # env value is the joined name), gr00t, isaacLabTraining,
                                  # imageTo3d (one job definition per enabled model)
@@ -187,7 +194,9 @@ CoreVAMSStack (root)
   |     +-- PipelineBuilder (all use-case pipelines)             -> storage, ApiBuilder2
   |     |                                                           (its vamsSchema registration custom
   |     |                                                            resources invoke an ApiBuilder2 Lambda)
-  |     +-- AddonBuilder (Garnet, Physna Sync, Miris)            -> storage, resourceNames
+  |     +-- AddonBuilder (Garnet, Physna Sync, Miris)            -> storage, resourceNames, ApiBuilder2
+  |     |                                                           (the Miris upload pipeline's registration
+  |     |                                                            custom resource invokes an ApiBuilder2 Lambda)
   |     +-- CustomBuilder (fork extension point)                 -> storage, resourceNames
   |     +-- RestApi (ApiNestedStack: API Gateway + authorizer)   -> storage, AuthBuilder, ApiBuilder,
   |     |                                                           ApiBuilder2, SearchBuilder, AddonBuilder,
@@ -243,7 +252,7 @@ Configuration values resolve in order: CDK context (`-c key=value`) → `config/
 -   `app.useAlb`: enabled, usePublicSubnet, domainHost, certificateArn
 -   `app.useCloudFront`: enabled, customDomain (domainHost, certificateArn, optionalHostedZoneId)
 -   `app.pipelines`: deadlineCloudExecutionTypeEnabled, externalPipelineBridges (`[{accountId, roleArnPattern, invokeTargets?}]` — one `events:PutEvents` statement per entry on the orchestration bus resource policy, granted to the bridge account root under an `aws:PrincipalArn` condition on the pattern, plus the exact `invokeTargets` ARNs on the shared workflow role; validated by `validateExternalPipelineBridges()`), executionLogReadPrefixes (`string[]` of `/aws/<service>/...` log-group names, trailing `*` = prefix, used verbatim as the executionService log-read resources; default `DEFAULT_EXECUTION_LOG_READ_PREFIXES`; validated by `validateExecutionLogReadPrefixes()`, which rejects `*`, `/` and anything outside `/aws/`), useConversion3dBasic, useConversionCadMeshMetadataExtraction, useConversionCoordinateTransform, usePreviewPcPotreeViewer, useSplatToolbox, useGenAiMetadata3dLabeling, useGenAiVideoSopBom (bedrockModelId, limits.maxVideoFiles, limits.maxTotalDurationMinutes), useImageTo3d, useRapidPipeline (useEcs, useEks), useModelOps, useIsaacLabTraining, usePreview3dThumbnail, useNvidiaCosmos, useNvidiaCosmos3, useNvidiaGr00t — recompute from the `pipelines: {` block of `ConfigPublic` in `config/config.ts` rather than extending this list
--   `app.addons`: useGarnetFramework, usePhysnaSync, useMirisStreaming (viewerKeyMode `static` | `perView`, viewerKey for static mode, viewerKeyTtlMinutes 1–60, apiKeySecretArn as a complete Secrets Manager ARN, mirisApiBaseUrl; `getConfig()` accepts it in the `aws` partition only and requires `app.webUi.allowUnsafeEvalFeatures`)
+-   `app.addons`: useGarnetFramework, usePhysnaSync, useMirisStreaming (viewerKeyMode `static` | `perView`, viewerKey for static mode, viewerKeyTtlMinutes 1–60, apiKeySecretArn as a complete Secrets Manager ARN, mirisApiBaseUrl; `getConfig()` accepts it in the `aws` partition only and requires `app.webUi.allowUnsafeEvalFeatures`; `upload` holds the Miris upload pipeline's settings: enabled, autoRegisterWithVAMS, autoRegisterAutoTriggerOnFileUpload, triggerExtensions, taskTimeoutSeconds, maxAssetSizeBytes, each defaulted on its own, `upload.enabled` requiring the add-on and the global VPC; the pipeline reads the add-on's Integration Key secret and API base URL; a block left under `app.pipelines` is rejected)
 -   `app.authProvider`: useCognito (enabled, useSaml, useOidc, useUserPasswordAuthFlow, credTokenTimeoutSeconds — `useSaml`/`useOidc` are mutually exclusive, commercial-partition only, and are ignored (resolved to `false`) when `enabled` is false; retainLegacyGroupsAttribute — whether the user pool declares `custom:groups`, which an existing pool must keep (CloudFormation refuses any schema-attribute change) and Cognito rejects on a new pool; absent resolves to `true` with a warning, the templates set `false`, the tracked `config.json` leaves it unset); useExternalOAuthIdp (enabled, idpDisplayName, endpoints); authorizerOptions (allowedIpRanges, defaultUserRoleName — a role granted to an authenticated user with no role assignments, empty disables it). Provider details for Cognito federation live outside `config.json` in `config/saml-config.ts` and `config/oidc-config.ts`.
 -   `app.api`: apiType (fixed `"APIGATEWAY_REST"`); apiGatewayRest (globalRateLimit default 50, globalBurstLimit default 100, endpointType `"REGIONAL"`/`"PRIVATE"`, optionalExternalPrivateApigVPCEId for PRIVATE, apiGatewayTimeoutTime default 29 / max 300 — integration timeout in seconds, applied as `timeoutInMillis` on every route integration in `buildOpenApiSpec.ts`; above 29 requires an approved account `L-E5AE38E3` quota increase; customDomain (enabled, domainHost, certificateArn, optionalHostedZoneId — off by default; Regional custom domain with base path `api`, read through `apiCustomDomainHost(config)`; validated: host + cert required, lowercase host, cert in `env.region`/`env.partition`, not `PRIVATE`, partition in `API_CUSTOM_DOMAIN_PARTITIONS`))
 -   `app.govCloud` (enabled, il6Compliant); `app.iamRoleConfig` (useCustomBootstrapRoles, useCustomVamsStackRoles — mappings in `config/policy/iamRoleConfig.json`); `app.webUi` (optionalBannerHtmlMessage, allowUnsafeEvalFeatures)
@@ -253,7 +262,7 @@ Configuration values resolve in order: CDK context (`-c key=value`) → `config/
 
 ### Feature Flags (common/vamsAppFeatures.ts)
 
-`VAMS_APP_FEATURES` enum: `GOVCLOUD`, `ALLOWUNSAFEEVAL`, `LOCATIONSERVICES`, `ALBDEPLOY`, `CLOUDFRONTDEPLOY`, `NOOPENSEARCH`, `AUTHPROVIDER_COGNITO`, `AUTHPROVIDER_COGNITO_SAML`, `AUTHPROVIDER_COGNITO_OIDC`, `AUTHPROVIDER_EXTERNALOAUTHIDP`, `DEADLINECLOUD_PIPELINES`. `ADDON_APP_FEATURES` enum (`common/addonAppFeatures.ts`): `PHYSNA_ADDON`, `MIRIS_ADDON`. Features are tracked in the `enabledFeatures` array on `CoreVAMSStack` and persisted to DynamoDB by `CustomFeatureEnabledConfigNestedStack`. Add-on switches (`ADDON_APP_FEATURES`) are computed by `AddonBuilderNestedStack.enabledFeatures` and a fork's (`CUSTOM_APP_FEATURES`, `common/customAppFeatures.ts`) by its `buildCustomResources()`; `core-stack.ts` pushes both lists.
+`VAMS_APP_FEATURES` enum: `GOVCLOUD`, `ALLOWUNSAFEEVAL`, `LOCATIONSERVICES`, `ALBDEPLOY`, `CLOUDFRONTDEPLOY`, `NOOPENSEARCH`, `AUTHPROVIDER_COGNITO`, `AUTHPROVIDER_COGNITO_SAML`, `AUTHPROVIDER_COGNITO_OIDC`, `AUTHPROVIDER_EXTERNALOAUTHIDP`, `DEADLINECLOUD_PIPELINES`. `ADDON_APP_FEATURES` enum (`common/addonAppFeatures.ts`): `PHYSNA_ADDON`, `MIRIS_ADDON`, `MIRIS_UPLOAD`. Features are tracked in the `enabledFeatures` array on `CoreVAMSStack` and persisted to DynamoDB by `CustomFeatureEnabledConfigNestedStack`. Add-on switches (`ADDON_APP_FEATURES`) are computed by `AddonBuilderNestedStack.enabledFeatures` and a fork's (`CUSTOM_APP_FEATURES`, `common/customAppFeatures.ts`) by its `buildCustomResources()`; `core-stack.ts` pushes both lists.
 
 ---
 
@@ -680,7 +689,7 @@ Every aggregated list in the CDK app is composed from a core part, an add-on par
 -   Routes use `attachFunctionToApi(scope, fn, { routePath, method, registry: props.registry })`. Synth fails when the fork's code registers an `allowAnonymous` route or makes an earlier route anonymous (`CustomBuilderNestedStack` compares the anonymous routes before and after the call); `RouteRegistry` stores frozen descriptors, so an earlier route cannot be edited through `list()`.
 -   Storage uses `storageResources.encryption.kmsKey` under the same `useKmsCmkEncryption` switch as the core tables (Rule 8).
 -   Resource names are published with `publishCustomResourceName(scope, config, key, value)` (`customStackHelpers.ts`), declared in `common/customResourceParamKeys.ts` and mirrored in `backend/backend/custom/customResourceNames.py` (`test/storage/resourceNamesMirror.test.ts`); a core key, or a key declared in `common/addonResourceParamKeys.ts`, throws at synth. The add-on lane works the same way: keys in `common/addonResourceParamKeys.ts` (the Miris Spatial Streaming viewer-key table), mirrored in `backend/backend/common/addonResourceNames.py`, published by an add-on stack with `publishAddonResourceName()` (`nestedStacks/addon/addonStackHelpers.ts`); both helpers share `nestedStacks/resourceNames/laneResourceNames.ts`. Handlers already hold `ssm:GetParameter*` on the prefix. The parameters hold names only; a secret goes in a `secretsmanager.Secret` with the key imported by ARN (trap 2 of "Encryption at rest for a new resource").
--   Feature switches are `CUSTOM_APP_FEATURES` values (`common/customAppFeatures.ts`) returned from `buildCustomResources()`; a returned `VAMS_APP_FEATURES` or `ADDON_APP_FEATURES` value fails synth. Add-on switches are `ADDON_APP_FEATURES` (`common/addonAppFeatures.ts`, `PHYSNA_ADDON`, `MIRIS_ADDON`), pushed by `AddonBuilderNestedStack.enabledFeatures`, which refuses a core value. `test/addon/appFeatureLanes.test.ts` keeps the three enums disjoint.
+-   Feature switches are `CUSTOM_APP_FEATURES` values (`common/customAppFeatures.ts`) returned from `buildCustomResources()`; a returned `VAMS_APP_FEATURES` or `ADDON_APP_FEATURES` value fails synth. Add-on switches are `ADDON_APP_FEATURES` (`common/addonAppFeatures.ts`, `PHYSNA_ADDON`, `MIRIS_ADDON`, `MIRIS_UPLOAD`), pushed by `AddonBuilderNestedStack.enabledFeatures`, which refuses a core value. `test/addon/appFeatureLanes.test.ts` keeps the three enums disjoint.
 -   Permission object types for fork or add-on entities are backend constants (`backend/backend/custom/customConstants.py`, `common/addonConstants.py`), not CDK. They get **no seeded constraint**: never extend `dynamodb-authdefaults-admin-construct.ts` or `dynamodb-authdefaults-ro-construct.ts` for one.
 -   An add-on route the seeded basic read-only role needs is a `route__path` criterion from `addonDefaultRoutes.ts`, not an edit of `dynamodb-authdefaults-ro-construct.ts`: `addonReadOnlyApiRouteCriteria()` joins its "Allow GET on API Paths" constraint, and `addonReadOnlyApiPostRouteCriteria()` its "Allow POST on API Paths" constraint, for an add-on route that reads through a POST body (`POST /addon/miris/viewer-key`). Both follow the constraint's core criteria, so the core criterion ids and their order are unchanged (`test/addon/addonPostRoutes.test.ts`).
 -   Fork settings come from `loadCustomConfig()` (`config/custom/customConfig.json`, outside `ConfigPublic`: not in `getConfig()`, the config templates or the ConfigBuilder). `test/api/apiRouteBackendCdkParity.test.ts` synthesizes with the committed file, so every custom route must be registered under it.
@@ -838,7 +847,7 @@ The harness resets `s3AssetBucketRecords` between synths: it is a module-level m
 **Jest compiles transpile-only; `npm run typecheck` is the type check.** `tsconfig.json` sets `isolatedModules: true`, so ts-jest compiles each file on its own instead of type-checking the `lib/` import graph in every worker. A type error therefore does not fail `npm test`; it fails `npm run typecheck` (`tsc --noEmit` over lib, bin, config and test), which the CI `infra-typecheck` job runs. Run it before pushing.
 
 **Enabling `useSplatToolbox` in a T1 synth requires `useCodeBuild: true`.** Splat is the only one of the
-twenty-four pipeline Dockerfiles that is **not in the repository** (recompute as
+twenty-five pipeline Dockerfiles that is **not in the repository** (recompute as
 `git ls-files backendPipelines | grep -c Dockerfile` tracked files plus the one gitignored splat file) —
 `backendPipelines/3dRecon/splatToolbox/container/.gitignore` ignores `Dockerfile` under "Pipeline Source
 Download Ignore", because it arrives from an upstream sync. With `useCodeBuild` false,
