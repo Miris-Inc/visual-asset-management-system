@@ -7,6 +7,7 @@ import * as iam from "aws-cdk-lib/aws-iam";
 import { AwsCustomResource, AwsSdkCall, PhysicalResourceId } from "aws-cdk-lib/custom-resources";
 import { Construct } from "constructs";
 import { storageResources } from "../../../storage/storageBuilder-nestedStack";
+import { SEED_CUSTOM_RESOURCE_SERVICE_TIMEOUT } from "../../../../helper/seedCustomResource";
 import mirisStreamSchema from "./dynamodb-metadataschema-miris-stream.json";
 
 export interface DynamoDbMetadataSchemaMirisConstructProps {
@@ -82,6 +83,7 @@ export class DynamoDbMetadataSchemaMirisConstruct extends Construct {
             ),
             onUpdate: seedCall("attribute_exists(metadataSchemaId) AND modifiedBy = :systemUser"),
             role: props.customResourceRole,
+            serviceTimeout: SEED_CUSTOM_RESOURCE_SERVICE_TIMEOUT,
         });
     }
 }
