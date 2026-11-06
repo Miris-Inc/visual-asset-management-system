@@ -36,8 +36,11 @@ CAUSE_MAX_CHARS = 256
 CLOSED_TOKEN_ERROR_CODES = ("TaskTimedOut", "TaskDoesNotExist", "InvalidToken")
 
 # The container's exit codes (EXIT_* in container/__main__.py) and the reason the workflow shows.
+# The container never deletes the Miris asset it created, so the reasons for the codes that can
+# follow its creation name the asset's vams-asset tag ({tag}), by which it can be found in Miris.
 EXIT_CODE_REASONS = {
-    1: "The Miris upload container failed with an unexpected error. See the container log.",
+    1: "The Miris upload container failed with an unexpected error. See the container log. "
+       "Any Miris asset the run created is kept; find it in Miris by the tag {tag}.",
     2: "The Miris upload container was started without a complete pipeline definition.",
     3: "The file is not a USD format the Miris upload accepts (.usd, .usda, .usdc or .usdz).",
     4: "The asset is larger than the configured maximum upload size "
@@ -45,9 +48,11 @@ EXIT_CODE_REASONS = {
     5: "The USD file references layers or assets that are not part of the VAMS asset.",
     6: "The asset has no USD file to upload, or every USD file in it is referenced by another.",
     7: "The run has no metadata output location for the Miris stream metadata.",
-    8: "Miris rejected the upload or could not process it. See the container log.",
-    9: "Miris did not finish processing the asset within the configured task timeout "
-       "(app.addons.useMirisStreaming.upload.taskTimeoutSeconds).",
+    8: "Miris rejected the upload or could not process it. See the container log. "
+       "Any Miris asset the run created is kept; find it in Miris by the tag {tag}.",
+    9: "Miris did not finish processing the asset within "
+       "app.addons.useMirisStreaming.upload.taskTimeoutSeconds. The Miris asset is kept and may "
+       "still finish; find it in Miris by the tag {tag}.",
     10: "The asset has more than one root USD file (ambiguous_root): no other USD file in the asset "
         "references them. Keep one root layer per asset, or reference the others from it.",
     11: "A USD file in the asset is empty or malformed and could not be read (unreadable_layer). "
@@ -86,14 +91,19 @@ def _batch_exit_code(job):
     return code
 
 
-def failure_reason(error_type, error_cause):
+def asset_tag(asset_id):
+    """The tag the container gives every Miris asset it creates for the VAMS asset `asset_id`."""
+    return f"vams-asset-{asset_id or '<assetId>'}"
+
+
+def failure_reason(error_type, error_cause, asset_id=""):
     """A user-facing reason for a failed state: the Batch job's exit code, a Lambda error message,
     or a generic reason. Never the raw Batch job description."""
     cause = _parse_json(error_cause)
     if cause is not None and ("Container" in cause or "JobId" in cause):
         code = _batch_exit_code(cause)
         if code in EXIT_CODE_REASONS:
-            return EXIT_CODE_REASONS[code]
+            return EXIT_CODE_REASONS[code].format(tag=asset_tag(asset_id))
         status_reason = cause.get("StatusReason") or (cause.get("Container") or {}).get("Reason") or ""
         if "timeout" in status_reason.lower() or "duration" in status_reason.lower():
             return CONTAINER_TIME_LIMIT_REASON
@@ -177,6 +187,9 @@ def lambda_handler(event, context):
     if status == "success":
         sfn.send_task_success(taskToken=task_token, output=json.dumps({"status": "success"}))
     else:
-        _report_failure(task_token, failure_reason(event.get("errorType", ""), event.get("errorCause", "")))
+        _report_failure(
+            task_token,
+            failure_reason(event.get("errorType", ""), event.get("errorCause", ""), event.get("assetId", "")),
+        )
 
     return {"statusCode": 200, "body": "ok"}

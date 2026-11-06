@@ -5,7 +5,6 @@ import os
 import sys
 
 import pytest
-from unittest.mock import MagicMock
 import responses
 
 pytestmark = pytest.mark.unit
@@ -334,28 +333,9 @@ def test_trigger_generate_best_effort_returns_none_on_5xx_and_unreadable_body():
 
 
 @responses.activate
-def test_delete_asset_issues_delete_and_reports_success():
-    responses.add(responses.DELETE, f"{BASE}/v1/asset/{UUID}", status=204)
-
-    client, _ = _client()
-    assert client.delete_asset(UUID) is True
-    assert responses.calls[0].request.method == "DELETE"
-    assert responses.calls[0].request.headers["Miris-Integration-Key"] == KEY
-
-
-@responses.activate
-def test_delete_asset_failure_returns_false_rather_than_raising():
-    responses.add(responses.DELETE, f"{BASE}/v1/asset/{UUID}", json={}, status=401)
-
-    client, _ = _client()
-    assert client.delete_asset(UUID) is False
-
-
-@responses.activate
 @pytest.mark.parametrize("method,call", [
     ("GET", lambda c: c.get_asset(UUID)),
     ("PUT", lambda c: c.mark_upload_complete(UUID)),
-    ("DELETE", lambda c: c.delete_asset(UUID)),
 ])
 def test_idempotent_calls_retry_a_response_cut_off_mid_body(method, call):
     import requests
@@ -410,20 +390,13 @@ def test_an_unreadable_asset_body_is_a_miris_error():
         client.get_asset(UUID)
 
 
-def test_delete_asset_never_raises():
-    client, _ = _client()
-    client._session = MagicMock()
-    client._session.request.side_effect = RuntimeError("unexpected")
-    assert client.delete_asset(UUID) is False
-
-
 ELSEWHERE = "https://elsewhere.test/collect"
 
 
 def _redirect_then_elsewhere(method, url):
     """A 302 from `url` to another host, which also answers, so a followed redirect is recorded."""
     responses.add(method, url, status=302, headers={"Location": ELSEWHERE})
-    for other in (responses.GET, responses.POST, responses.PUT, responses.DELETE):
+    for other in (responses.GET, responses.POST, responses.PUT):
         responses.add(other, ELSEWHERE, json={"id": UUID, "state": "preview"}, status=200)
 
 
@@ -447,14 +420,10 @@ def test_a_redirect_fails_the_call_without_a_second_request(method, path, call):
 
 
 @responses.activate
-@pytest.mark.parametrize("method,path,call,expected", [
-    ("POST", f"/v1/asset/{UUID}/generate", lambda c: c.trigger_generate_best_effort(UUID), None),
-    ("DELETE", f"/v1/asset/{UUID}", lambda c: c.delete_asset(UUID), False),
-])
-def test_a_redirect_is_not_followed_by_best_effort_calls(method, path, call, expected):
-    _redirect_then_elsewhere(method, f"{BASE}{path}")
+def test_a_redirect_is_not_followed_by_the_best_effort_generate_call():
+    _redirect_then_elsewhere(responses.POST, f"{BASE}/v1/asset/{UUID}/generate")
 
     client, _ = _client()
-    assert call(client) is expected
+    assert client.trigger_generate_best_effort(UUID) is None
     assert len(responses.calls) == 1
     assert all(c.request.url.startswith(BASE) for c in responses.calls)

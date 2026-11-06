@@ -9,7 +9,6 @@ The upload flow:
   3. PUT    /v1/content/{id}           -> mark_upload_complete (status=completed)
   4. GET    /v1/asset/{id}             -> poll_until_terminal
   5. POST   /v1/asset/{id}/generate    -> trigger_generate_best_effort
-  6. DELETE /v1/asset/{id}             -> delete_asset, for an upload that did not complete
 
 Auth uses the `Miris-Integration-Key` header (not `Authorization: Bearer`), matching the OpenAPI
 ApiKeyHeader scheme. Redirects are never followed, so the key header never reaches another host; a
@@ -20,7 +19,7 @@ is a separate, hours-long, entitlement-gated step: the pipeline polls until `pre
 already-`streamable`) and then asks for promotion best effort, with manual promotion in the Miris
 Portal as the fallback.
 
-Idempotent calls (GET, PUT, DELETE) are retried with exponential backoff on a transient request
+Idempotent calls (GET, PUT) are retried with exponential backoff on a transient request
 failure (a connection error, a timeout, a response cut off mid-body), 429 or a 5xx. POST /v1/content is not: it creates an asset, so a retry after a lost
 response would create a second one.
 """
@@ -189,12 +188,3 @@ class MirisClient:
             return r.json() if r.text else {}
         except (requests.RequestException, ValueError):
             return None
-
-    # 6. DELETE /v1/asset/{id}
-    def delete_asset(self, asset_id: str) -> bool:
-        """Delete an asset this run created. Best effort: True when Miris confirmed the delete."""
-        try:
-            r = self._request("DELETE", f"{self.base_url}/v1/asset/{asset_id}")
-        except Exception:
-            return False
-        return r.status_code < 300

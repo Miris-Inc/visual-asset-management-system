@@ -135,8 +135,34 @@ def test_every_container_exit_code_maps_to_a_reason_not_the_job_description(end,
     cause = _batch_cause(exit_code)
     reason = end.failure_reason("States.TaskFailed", cause)
 
-    assert reason == end.EXIT_CODE_REASONS[exit_code]
+    assert reason == end.EXIT_CODE_REASONS[exit_code].format(tag="vams-asset-<assetId>")
     assert "JobId" not in reason and "{" not in reason
+
+
+@pytest.mark.parametrize("exit_code", [1, 8, 9])
+def test_a_failure_after_the_miris_asset_exists_says_it_is_kept_and_names_its_tag(end, exit_code):
+    with patch.object(end, "sfn") as sfn, patch.object(end, "s3_client"):
+        end.lambda_handler(_event(status="failed", errorType="States.TaskFailed",
+                                  errorCause=_batch_cause(exit_code)), None)
+
+    cause = sfn.send_task_failure.call_args.kwargs["cause"]
+    assert "kept" in cause
+    assert cause.endswith("find it in Miris by the tag vams-asset-a1.")
+
+
+@pytest.mark.parametrize("exit_code", [1, 8, 9])
+def test_a_kept_asset_reason_fits_the_cause_limit_with_a_full_length_asset_id(end, exit_code):
+    asset_id = "a" * 63
+    reason = end.failure_reason("States.TaskFailed", _batch_cause(exit_code), asset_id)
+
+    assert reason.endswith(f"vams-asset-{asset_id}.")
+    assert len(reason) <= end.CAUSE_MAX_CHARS
+
+
+def test_a_kept_asset_reason_without_an_asset_id_names_the_tag_pattern(end):
+    reason = end.failure_reason("States.TaskFailed", _batch_cause(9))
+
+    assert reason.endswith("vams-asset-<assetId>.")
 
 
 def test_batch_attempt_timeout_reads_as_a_time_limit(end):

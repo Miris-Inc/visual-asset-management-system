@@ -4,8 +4,9 @@
 
 Reads the pipeline definition (single JSON arg from constructPipeline), lists the
 asset under its resolved root, chooses the root USD file (the one layer no other layer in the
-asset references, or the single .usdz), runs the 6-step Miris upload flow, writes the Miris stream
-metadata for that root file to the run's metadata output path, and exits 0/non-0.
+asset references, or the single .usdz), runs the Miris upload flow, writes the Miris stream
+metadata for that root file to the run's metadata output path, and exits 0/non-0. A Miris asset the
+run created is never deleted, whatever the outcome.
 """
 import datetime
 import hashlib
@@ -171,8 +172,9 @@ def run_miris_upload(client, *, name, tags, upload_local, upload_filename, conte
                      size, task_timeout, write_metadata):
     """Create the Miris asset, upload the artifact, wait for processing and record the result.
 
-    A failure after the asset exists deletes it, best effort, so a failed run leaves no orphan
-    asset in the Miris workspace; its id is logged either way. Returns the Miris asset id.
+    A failure after the asset exists, a processing timeout included, keeps the asset in Miris, where
+    it can still finish processing, and logs its id (miris_asset_kept); no stream metadata is written
+    for it. Returns the Miris asset id.
     """
     start = client.start_upload(
         name=name,
@@ -200,11 +202,7 @@ def run_miris_upload(client, *, name, tags, upload_local, upload_filename, conte
 
         write_metadata(asset_uuid)
     except BaseException as e:
-        try:
-            deleted = client.delete_asset(asset_uuid)
-        except Exception:
-            deleted = False
-        _log("upload_abandoned", asset_uuid=asset_uuid, deleted=deleted, error=str(e))
+        _log("miris_asset_kept", asset_uuid=asset_uuid, error=str(e))
         raise
     return asset_uuid
 

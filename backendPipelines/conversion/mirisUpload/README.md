@@ -10,11 +10,11 @@ The pipeline is same-Region only: `vamsExecuteMirisUpload` rejects an input file
 
 ### Container (`container/`)
 
--   **`__main__.py`** - Entrypoint; lists the asset under its resolved root, chooses the root USD file, checks the size limit, runs the 6-step Miris upload flow and writes the stream metadata for the root file
+-   **`__main__.py`** - Entrypoint; lists the asset under its resolved root, chooses the root USD file, checks the size limit, runs the Miris upload flow and writes the stream metadata for the root file
 -   **`stream_metadata.py`** - Builds the stream metadata body and its `.metadata.json` key under the run's metadata output path
 -   **`usd_packager.py`** - Root selection (the layer no other layer references), USD dependency resolution and `.usdz` packaging via OpenUSD (`UsdUtils.ComputeAllDependencies`)
 -   **`upload_config.py`** - Reads the rendered template configuration (Miris asset name and tags) and drops tags with the reserved `vams-asset-` and `vams-database-` prefixes
--   **`miris_uploader.py`** - Miris content API client (`MirisClient`): start upload, mark complete, poll, generate, delete
+-   **`miris_uploader.py`** - Miris content API client (`MirisClient`): start upload, mark complete, poll, generate
 -   **`utils/secrets.py`** - Retrieves the Miris Integration Key from AWS Secrets Manager
 -   **`Dockerfile`** / **`entrypoint.sh`** - x86_64 image, digest-pinned base, runs as a non-root user
 
@@ -61,6 +61,7 @@ The pipeline is same-Region only: `vamsExecuteMirisUpload` rejects an input file
 
     - Polls until Miris reaches a terminal preview/streamable state, then requests streamable processing (`POST /v1/asset/{id}/generate`, best effort).
     - Writes `{outputS3AssetMetadataPath}<relativeFilePath>.metadata.json`, where `<relativeFilePath>` is the root USD file's path within the asset root (for example `scenes/pump.usda`). The workflow's process-output step applies it to that file as an `update`, so other file metadata is kept.
+    - A failure after `POST /v1/content` (a Miris `error` or `failed` state, a processing timeout, a failed upload `PUT` or metadata write) fails the run but never deletes the Miris asset; the container logs its ID (`miris_asset_kept`). No stream metadata is written for it, so it is not linked to the VAMS file. A timed-out asset can still finish processing: find it in the Miris Portal by its `vams-asset-{assetId}` tag, then link it by setting the file's stream metadata by hand, or delete it there. Running the workflow again uploads a new Miris asset.
 
 ## Output
 
