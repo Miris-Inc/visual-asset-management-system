@@ -249,3 +249,18 @@ def test_extension_gate_accepts_listed_extensions_in_any_case(open_pipeline, mon
             _execute_event(inputS3AssetFilePath=f"s3://assets/a1/model{extension}"), None)
 
     assert resp["statusCode"] == 200
+
+
+@pytest.mark.parametrize("event_version, expected", [("v-launch", "v-launch"), (None, "")])
+def test_the_launch_input_version_is_on_the_state_machine_input(open_pipeline, event_version, expected):
+    import datetime
+
+    overrides = {} if event_version is None else {"inputVersionId": event_version}
+    with patch.object(open_pipeline, "sfn") as sfn, patch.object(open_pipeline, "s3_client"):
+        sfn.start_execution.return_value = {
+            "executionArn": "arn:aws:states:us-east-1:123456789012:execution:x:y",
+            "startDate": datetime.datetime(2026, 8, 14),
+        }
+        open_pipeline.lambda_handler(_execute_event(**overrides), None)
+
+    assert json.loads(sfn.start_execution.call_args.kwargs["input"])["inputVersionId"] == expected

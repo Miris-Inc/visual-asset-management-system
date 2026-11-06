@@ -44,6 +44,7 @@ def _resolved(**overrides):
         "orchestrationEventPrefix": "",
         "inputFiles": [{"assetId": "a1", "bucket": "b", "assetRootS3Key": "vams/data/a1"}],
         "manifestUsed": True,
+        "inputVersionId": "",
     }
     resolved.update(overrides)
     return resolved
@@ -275,3 +276,10 @@ def test_same_region_buckets_reach_the_gate(handler, monkeypatch):
     assert resp["statusCode"] == 200
     assert gate_body["assetId"] == "a1"
     assert open_payload is not None
+
+
+@pytest.mark.parametrize("version", ["v-launch", "null", ""])
+def test_the_launch_input_version_reaches_the_pipeline(handler, version):
+    _, _, open_payload = _run(handler, resolved=_resolved(inputVersionId=version))
+
+    assert open_payload["inputVersionId"] == version

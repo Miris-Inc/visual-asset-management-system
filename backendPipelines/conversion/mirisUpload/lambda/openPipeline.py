@@ -128,6 +128,7 @@ def lambda_handler(event, context):
     orchestration_event_prefix = event.get("orchestrationEventPrefix", "")
     external_task_token = event.get("sfnExternalTaskToken", "")
     input_s3_uri = event["inputS3AssetFilePath"]
+    input_version_id = event.get("inputVersionId", "")
     output_s3_files = event.get("outputS3AssetFilesPath", "")
     output_s3_preview = event.get("outputS3AssetPreviewPath", "")
     output_s3_metadata = event.get("outputS3AssetMetadataPath", "")
@@ -158,6 +159,7 @@ def lambda_handler(event, context):
     sfn_input = {
         "jobName": job_name,
         "inputS3AssetFilePath": input_s3_uri,
+        "inputVersionId": input_version_id,
         "outputS3AssetFilesPath": output_s3_files,
         "outputS3AssetPreviewPath": output_s3_preview,
         "outputS3AssetMetadataPath": output_s3_metadata,

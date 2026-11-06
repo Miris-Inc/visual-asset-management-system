@@ -33,6 +33,7 @@ class AssetBucketS3:
     def __init__(self):
         self.files = {}
         self.unversioned = set()
+        self.missing_versions = set()
         self.list_calls = []
         self.downloads = []
         self.put_object = MagicMock(name="put_object")
@@ -64,6 +65,10 @@ class AssetBucketS3:
 
     def download_file(self, bucket, key, local, ExtraArgs=None):
         self.downloads.append((bucket, key, ExtraArgs))
+        version = (ExtraArgs or {}).get("VersionId")
+        if version and (key, version) in self.missing_versions:
+            from botocore.exceptions import ClientError
+            raise ClientError({"Error": {"Code": "NoSuchVersion", "Message": "missing"}}, "GetObject")
         with open(local, "wb") as f:
             f.write(self.files[(bucket, key)])
 

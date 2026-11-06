@@ -57,6 +57,7 @@ def lambda_handler(event, context):
 
     job_name = event.get("jobName")
     input_s3_uri = event.get("inputS3AssetFilePath", "")
+    input_version_id = event.get("inputVersionId", "")
     aux_uri = event.get("inputOutputS3AssetAuxiliaryFilesPath", "")
     metadata_uri = event.get("outputS3AssetMetadataPath", "")
     asset_id = event.get("assetId", "")
@@ -82,6 +83,9 @@ def lambda_handler(event, context):
                     "bucketName": input_bucket,
                     "objectKey": input_key,
                     "fileExtension": extension,
+                    # The version the run recorded at launch ("" for none); the container reads the
+                    # selected file at it, and the other layers at their current version.
+                    "versionId": input_version_id,
                 },
                 "assetRoot": {
                     "bucketName": asset_root_bucket,

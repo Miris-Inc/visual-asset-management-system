@@ -45,6 +45,7 @@ The pipeline is same-Region only: `vamsExecuteMirisUpload` rejects an input file
 
     - Lists the asset under its resolved root (which carries `baseAssetsPrefix` or an existing-key location) and checks `maxAssetSizeBytes` from the listing before downloading: a lone `.usdz` root counts alone, otherwise every file under the root counts.
     - Chooses the root: the one file with a trigger extension that no other USD layer references (sublayers, references, payloads, value clips, asset-valued attributes), or the single `.usdz`. More than one candidate fails with `ambiguous_root` (exit 10); an unreadable layer fails with `unreadable_layer` (exit 11) and the log names the file. A dependency that resolves outside the asset directory (an absolute or `..` path) fails with `reference_outside_asset` (exit 12) before anything is packaged.
+    - Reads the selected file at the S3 version the run recorded at launch (`triggerInput.versionId`) and the other layers at their current version; a launch version that no longer exists fails with `input_version_missing` (exit 13), and the log names the file and the version.
     - Downloads the asset preserving its relative layout so USD references resolve, computes the root's dependencies, and fails fast on unresolved (absolute-path) references.
 
 3. **Package**

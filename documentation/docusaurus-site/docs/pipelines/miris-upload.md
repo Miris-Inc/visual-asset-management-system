@@ -72,7 +72,7 @@ The Miris content API accepts one self-contained file per asset. A root `.usd`, 
 
 ## What the container does
 
-The container lists the asset under its resolved root, which carries the bucket's `baseAssetsPrefix` or the asset's existing-key location, and chooses the root USD file. It checks `maxAssetSizeBytes` against the sizes in that listing before it downloads anything: a lone `.usdz` root counts alone, and otherwise every file under the asset root counts. It downloads what it needs, preserving the relative layout so USD references resolve, pins each candidate root to the Amazon S3 version it read, packages a multi-file root, and runs the Miris upload:
+The container lists the asset under its resolved root, which carries the bucket's `baseAssetsPrefix` or the asset's existing-key location, and chooses the root USD file. It checks `maxAssetSizeBytes` against the sizes in that listing before it downloads anything: a lone `.usdz` root counts alone, and otherwise every file under the asset root counts. It downloads what it needs, preserving the relative layout so USD references resolve. The selected file is read at the Amazon S3 version the run recorded at launch (the version picked on the execute form, or the one current when the run started), and the other layers at their current version. Each candidate root is pinned to the version it was read at. It then packages a multi-file root and runs the Miris upload:
 
 1. `POST /v1/content` starts the upload and returns a Miris asset ID and short-lived upload credentials.
 2. A SigV4-signed `PUT` sends the file to the Miris upload storage, under the exact file name declared as the content path.
@@ -149,6 +149,7 @@ A failed run reports one of these reasons to the workflow execution, chosen from
 | 10        | The asset has more than one root USD file (`ambiguous_root`).                                                                                                                                                                    |
 | 11        | A USD file in the asset is empty or malformed (`unreadable_layer`). The container log's `unreadable_layer` entry names the file.                                                                                                 |
 | 12        | The USD file references a layer or asset outside the VAMS asset (`reference_outside_asset`), such as an absolute path or a `..` path that leaves the asset. The container log's `reference_outside_asset` entry names the files. |
+| 13        | The file version the run was started on no longer exists (`input_version_missing`), for example a version deleted after launch. The container log's `input_version_missing` entry names the file and the version.                |
 
 A job stopped at its time limit, an inner execution that timed out or was stopped, and a failure in one of the pipeline's Lambda functions each report their own reason. The pipeline's `vamsExecute` function also rejects a run whose input file or output bucket is in another AWS Region before anything is claimed or uploaded, and names the Regions in the reason. The container log is in the `/aws/vendedlogs/Pipelines/MirisUpload<hash>` log group, and the state machine log in `/aws/vendedlogs/VAMSStateMachine-MirisUpload<hash>`.
 

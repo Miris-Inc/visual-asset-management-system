@@ -60,6 +60,9 @@ EXIT_CODE_REASONS = {
     12: "The USD file references a layer or asset outside the VAMS asset (reference_outside_asset), "
         "which is never packaged. The container log's reference_outside_asset entry names the files; "
         "reference files inside the asset with relative paths.",
+    13: "The file version this run was started on no longer exists (input_version_missing). The "
+        "container log's input_version_missing entry names the file and the version; start the run "
+        "again on a version that exists.",
 }
 
 EXECUTION_STATUS_REASONS = {

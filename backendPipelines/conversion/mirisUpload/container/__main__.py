@@ -15,6 +15,7 @@ import os
 import sys
 import boto3
 from botocore.config import Config
+from botocore.exceptions import ClientError
 
 from miris_uploader import MirisClient, MirisError, _redact_response
 from stream_metadata import (
@@ -52,6 +53,7 @@ EXIT_MIRIS_TIMEOUT = 9
 EXIT_AMBIGUOUS_ROOT = 10
 EXIT_UNREADABLE_LAYER = 11
 EXIT_REFERENCE_OUTSIDE_ASSET = 12
+EXIT_INPUT_VERSION_MISSING = 13
 
 WORKDIR = "/workdir"
 
@@ -113,15 +115,37 @@ def list_asset_files(s3, bucket: str, root_prefix: str) -> list[tuple[str, str, 
     return [(key, rel, sizes[key]) for key, rel in local_download_plan(sizes, root_prefix)]
 
 
-def download_files(s3, bucket: str, files, dest_dir: str, pinned) -> dict:
+class InputVersionMissingError(Exception):
+    """The selected file's launch version no longer exists."""
+
+    def __init__(self, rel: str, version_id: str, error: Exception):
+        super().__init__(f"{rel} has no version {version_id}: {error}")
+        self.rel, self.version_id, self.error = rel, version_id, error
+
+
+_MISSING_VERSION_CODES = {"NoSuchVersion", "NoSuchKey", "404", "405", "InvalidArgument"}
+
+
+def download_files(s3, bucket: str, files, dest_dir: str, pinned, launch_versions=None) -> dict:
     """Download `files` into dest_dir, preserving the relative layout so USD relative references
-    resolve. Each relative path in `pinned` is pinned to the version it reports. Returns
-    {relative path: VersionId or ''} for the pinned files."""
+    resolve. A relative path in `launch_versions` is read at that version (the selected file, at
+    the version the run recorded at launch); each other relative path in `pinned` is pinned to the
+    version it reports now. Returns {relative path: VersionId or ''} for the pinned files."""
+    launch_versions = launch_versions or {}
     versions = {}
     for key, rel, _size in files:
         local = os.path.join(dest_dir, rel)
         os.makedirs(os.path.dirname(local), exist_ok=True)
-        if rel in pinned:
+        if launch_versions.get(rel):
+            try:
+                _download_version(s3, bucket, key, local, launch_versions[rel])
+            except ClientError as e:
+                if e.response.get("Error", {}).get("Code") in _MISSING_VERSION_CODES:
+                    raise InputVersionMissingError(rel, launch_versions[rel], e) from e
+                raise
+            if rel in pinned:
+                versions[rel] = launch_versions[rel]
+        elif rel in pinned:
             head = s3.head_object(Bucket=bucket, Key=key)
             versions[rel] = head.get("VersionId") or ""
             _download_version(s3, bucket, key, local, versions[rel])
@@ -288,7 +312,16 @@ def main():
         _log("file_too_large", size=total, max_bytes=max_bytes)
         sys.exit(EXIT_TOO_LARGE)
 
-    versions = download_files(s3, asset_bucket, to_download, asset_dir, set(candidates))
+    # The selected file is read at the version the run recorded at launch; the other layers are
+    # read at their current version.
+    trigger_rel = trigger_key[len(asset_root):] if trigger_key.startswith(asset_root) else ""
+    launch_versions = {trigger_rel: trigger.get("versionId") or ""} if trigger_rel else {}
+    try:
+        versions = download_files(s3, asset_bucket, to_download, asset_dir, set(candidates),
+                                  launch_versions)
+    except InputVersionMissingError as e:
+        _log("input_version_missing", file=e.rel, version_id=e.version_id, error=str(e.error))
+        sys.exit(EXIT_INPUT_VERSION_MISSING)
 
     def references_of(rel):
         return direct_references(os.path.join(asset_dir, rel), asset_dir)

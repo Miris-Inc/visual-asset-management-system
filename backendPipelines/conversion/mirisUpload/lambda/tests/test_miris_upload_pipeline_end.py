@@ -130,7 +130,7 @@ def test_release_failure_does_not_mask_the_pipeline_failure(end):
     sfn.send_task_failure.assert_called_once()
 
 
-@pytest.mark.parametrize("exit_code", sorted([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]))
+@pytest.mark.parametrize("exit_code", sorted([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13]))
 def test_every_container_exit_code_maps_to_a_reason_not_the_job_description(end, exit_code):
     cause = _batch_cause(exit_code)
     reason = end.failure_reason("States.TaskFailed", cause)

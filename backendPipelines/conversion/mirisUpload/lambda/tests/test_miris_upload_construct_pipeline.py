@@ -157,3 +157,12 @@ def test_the_container_definition_carries_no_task_token(construct):
     assert "tok-secret-1" not in result["definition"][0]
     # The state machine's end tasks still read it off the state.
     assert result["externalSfnTaskToken"] == "tok-secret-1"
+
+
+@pytest.mark.parametrize("event_version, expected", [("v-launch", "v-launch"), ("null", "null"), (None, "")])
+def test_the_launch_input_version_is_on_the_trigger_input(construct, event_version, expected):
+    overrides = {} if event_version is None else {"inputVersionId": event_version}
+    result = construct.lambda_handler(_event(**overrides), None)
+    stage = json.loads(result["definition"][0])["stages"][0]
+
+    assert stage["triggerInput"]["versionId"] == expected

@@ -157,6 +157,8 @@ def execute_pipeline(resolved, asset_location, claim_fingerprint, miris_asset_na
     asset_bucket, asset_root = asset_location
     message_payload = {
         "inputS3AssetFilePath": resolved["inputS3AssetFilePath"],
+        # The S3 version of the selected file recorded at launch ("" for none); the container reads it.
+        "inputVersionId": resolved["inputVersionId"],
         "outputS3AssetFilesPath": resolved["outputS3AssetFilesPath"],
         "outputS3AssetPreviewPath": resolved["outputS3AssetPreviewPath"],
         "outputS3AssetMetadataPath": resolved["outputS3AssetMetadataPath"],
