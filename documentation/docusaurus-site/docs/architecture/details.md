@@ -296,7 +296,7 @@ Configuration values resolve through a four-tier fallback chain:
 
 ## Nested Stack Dependency Chain
 
-The following diagram shows the nested stacks that `CoreVAMSStack` builds and the deployment order declared between them. Each solid arrow is an explicit `addStackDependency()` call in `infra/lib/core-stack.ts`, drawn from the prerequisite stack to the stack that deploys after it; the stacks the root points at declare no dependency, except LocationService, which declares one on StaticWeb when the static web stack is built. RestApi renders the routes that ApiBuilder, ApiBuilder2, SearchBuilder, and AddonBuilder register into a single Amazon API Gateway REST API, so it deploys after each of them.
+The following diagram shows the nested stacks that `CoreVAMSStack` builds and the deployment order declared between them. Each solid arrow is an explicit `addStackDependency()` call in `infra/lib/core-stack.ts`, drawn from the prerequisite stack to the stack that deploys after it; the stacks the root points at declare no dependency, except LocationService, which declares one on StaticWeb when the static web stack is built. The dashed arrow is declared only when the Miris upload pipeline is deployed (`app.addons.useMirisStreaming.upload.enabled`), whose registration custom resource invokes a Lambda function in ApiBuilder2. RestApi renders the routes that ApiBuilder, ApiBuilder2, SearchBuilder, and AddonBuilder register into a single Amazon API Gateway REST API, so it deploys after each of them.
 
 Stacks also read each other's outputs (the Lambda layers, `storageResources`, `authResources`, and the VPC), and AWS CloudFormation orders each such reference implicitly. StaticWeb reads the REST API endpoint and `authResources`, and declares its dependencies on RestApi and AuthBuilder explicitly. When `env.loadContextIgnoreVPCStacks` is `true`, ApiBuilder, ApiBuilder2, SearchBuilder, PipelineBuilder, AddonBuilder, RestApi, and StaticWeb are not built.
 
@@ -330,7 +330,7 @@ graph TD
 
     SRB --> Addon["AddonBuilder"]
     RNB --> Addon
-    APIBuild2 --> Addon
+    APIBuild2 -.-> Addon
 
     SRB --> REST["RestApi"]
     AB --> REST

@@ -106,7 +106,8 @@ infra/
       locationService/location-service-nestedStack.ts    # Amazon Location Service (commercial only)
       addon/
         addonBuilder-nestedStack.ts        # Addon orchestrator; enabledFeatures (ADDON_APP_FEATURES, rejects core values) pushed by core-stack;
-                                           # pipelineVamsLambdaFunctionNames of add-on pipelines, output by core-stack
+                                           # pipelineVamsLambdaFunctionNames of add-on pipelines, output by core-stack;
+                                           # invokesVamsSchemaImportFunction gates core-stack's ApiBuilder2 dependency
         addonStackHelpers.ts               # publishAddonResourceName() (rejects a core or custom key)
         addonCsp.ts                        # addonCspSources(): add-on connect-src, frame-src and script-src sources, merged by security.ts
         addonWafExclusions.ts              # addonWafRuleExclusions(): scoped rule exclusions for the regional ACL, passed by buildWafStacks() (shipped empty)
@@ -194,9 +195,11 @@ CoreVAMSStack (root)
   |     +-- PipelineBuilder (all use-case pipelines)             -> storage, ApiBuilder2
   |     |                                                           (its vamsSchema registration custom
   |     |                                                            resources invoke an ApiBuilder2 Lambda)
-  |     +-- AddonBuilder (Garnet, Physna Sync, Miris)            -> storage, resourceNames, ApiBuilder2
-  |     |                                                           (the Miris upload pipeline's registration
-  |     |                                                            custom resource invokes an ApiBuilder2 Lambda)
+  |     +-- AddonBuilder (Garnet, Physna Sync, Miris)            -> storage, resourceNames, and ApiBuilder2
+  |     |                                                           while the Miris upload pipeline is deployed
+  |     |                                                           (its registration custom resource invokes
+  |     |                                                            an ApiBuilder2 Lambda;
+  |     |                                                            invokesVamsSchemaImportFunction)
   |     +-- CustomBuilder (fork extension point)                 -> storage, resourceNames
   |     +-- RestApi (ApiNestedStack: API Gateway + authorizer)   -> storage, AuthBuilder, ApiBuilder,
   |     |                                                           ApiBuilder2, SearchBuilder, AddonBuilder,

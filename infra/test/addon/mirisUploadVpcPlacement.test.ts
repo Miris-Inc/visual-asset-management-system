@@ -14,7 +14,9 @@
  *
  * Synthesized from the shipped commercial template with the Miris add-on and its upload pipeline
  * enabled, and no core pipeline. The pipeline's nested stack is a child of the add-on stack, and the
- * add-on publishes the `MIRIS_UPLOAD` switch with it.
+ * add-on publishes the `MIRIS_UPLOAD` switch with it. The pipeline's vamsSchema registration invokes
+ * the import Lambda built in ApiBuilder2, so the add-on stack depends on ApiBuilder2 only while the
+ * pipeline is deployed; with it off, the root template carries no such edge.
  */
 
 import { SynthResult, synthTemplate } from "../support/templateSynth";
@@ -58,6 +60,15 @@ function recordsFeature(synth: SynthResult, feature: string): boolean {
     return synth
         .ofType("Custom::AWS")
         .some((r) => JSON.stringify(r.properties.Create).includes(`-${feature}\\"`));
+}
+
+/** The logical IDs the root template's add-on nested stack resource lists in its DependsOn. */
+function addonStackDependsOn(synth: SynthResult): string[] {
+    const addonStacks = synth.where("AWS::CloudFormation::Stack", (r) =>
+        r.logicalId.startsWith("AddonBuilderNestedStack")
+    );
+    expect(addonStacks).toHaveLength(1);
+    return ([] as string[]).concat(addonStacks[0].raw.DependsOn ?? []);
 }
 
 const endpointServices = (synth: SynthResult): string[] =>
@@ -140,5 +151,27 @@ describe("the Miris upload pipeline runs Fargate in private subnets", () => {
 
     test("no ECS control-plane endpoint is created for it", () => {
         expect(endpointServices(synth).filter((s) => /\.ecs$/.test(s))).toEqual([]);
+    });
+
+    test("the add-on stack depends on ApiBuilder2, whose import Lambda registers the pipeline", () => {
+        const dependsOn = addonStackDependsOn(synth);
+        expect(dependsOn.filter((id) => id.startsWith("ApiBuilder2NestedStack"))).toHaveLength(1);
+    });
+});
+
+describe("with the Miris add-on off (stock commercial template)", () => {
+    let synth: SynthResult;
+
+    beforeAll(() => {
+        synth = synthTemplate("commercial");
+    });
+
+    test("the add-on stack does not depend on ApiBuilder2", () => {
+        const dependsOn = addonStackDependsOn(synth);
+        // Control: the add-on stack's other dependencies are read from the same DependsOn.
+        expect(dependsOn.some((id) => id.startsWith("StorageResourcesBuilderNestedStack"))).toBe(
+            true
+        );
+        expect(dependsOn.filter((id) => id.startsWith("ApiBuilder2NestedStack"))).toEqual([]);
     });
 });

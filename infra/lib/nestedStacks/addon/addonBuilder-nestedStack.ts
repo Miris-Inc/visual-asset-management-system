@@ -48,6 +48,11 @@ export class AddonBuilderNestedStack extends NestedStack {
     public pipelineVamsLambdaFunctionNames: string[] = [];
     /** Feature switches for the enabled add-ons, pushed by the core stack. */
     public readonly enabledFeatures: string[] = [];
+    /**
+     * True when an enabled add-on builds a pipeline that registers with VAMS through the vamsSchema
+     * import Lambda (ApiBuilder2); the core stack then deploys this stack after ApiBuilder2.
+     */
+    public invokesVamsSchemaImportFunction = false;
 
     constructor(parent: Construct, name: string, props: AddonBuilderNestedStackProps) {
         super(parent, name);
@@ -143,6 +148,7 @@ export class AddonBuilderNestedStack extends NestedStack {
                 this.pipelineVamsLambdaFunctionNames.push(
                     mirisUploadBuilderNestedStack.pipelineVamsLambdaFunctionName
                 );
+                this.invokesVamsSchemaImportFunction = true;
 
                 // Gates the viewer's "Stream with Miris" action, which runs this pipeline.
                 this.enabledFeatures.push(ADDON_APP_FEATURES.MIRIS_UPLOAD);

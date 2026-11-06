@@ -74,8 +74,9 @@ CoreVAMSStack (root)
   |     +-- SearchBuilder (OpenSearch)                       -> storage, resourceNames
   |     +-- PipelineBuilder (all use-case pipelines)         -> storage, ApiBuilder2
   |     |    (its vamsSchema registration custom resources invoke an ApiBuilder2 Lambda)
-  |     +-- AddonBuilder (Garnet, Physna Sync, Miris)        -> storage, resourceNames, ApiBuilder2
-  |     |    (the Miris upload pipeline's registration custom resource invokes an ApiBuilder2 Lambda)
+  |     +-- AddonBuilder (Garnet, Physna Sync, Miris)        -> storage, resourceNames, and ApiBuilder2
+  |     |    while the Miris upload pipeline is deployed (its registration custom resource invokes an
+  |     |    ApiBuilder2 Lambda; AddonBuilderNestedStack.invokesVamsSchemaImportFunction)
   |     +-- CustomBuilder (fork extension point)             -> storage, resourceNames
   |     +-- RestApi (ApiNestedStack: API Gateway + authorizer)
   |     |                                                    -> storage, AuthBuilder, ApiBuilder,

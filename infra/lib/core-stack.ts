@@ -318,8 +318,11 @@ export class CoreVAMSStack extends cdk.Stack {
             });
             addonBuilderNestedStack.addStackDependency(storageResourcesNestedStack);
             addonBuilderNestedStack.addStackDependency(resourceNamesNestedStack);
-            // The V2 vamsSchema registration CRs invoke the import lambda built in ApiBuilder2.
-            addonBuilderNestedStack.addStackDependency(apiBuilder2NestedStack);
+            // An add-on pipeline's V2 vamsSchema registration CRs invoke the import lambda built in
+            // ApiBuilder2.
+            if (addonBuilderNestedStack.invokesVamsSchemaImportFunction) {
+                addonBuilderNestedStack.addStackDependency(apiBuilder2NestedStack);
+            }
 
             this.enabledFeatures.push(...addonBuilderNestedStack.enabledFeatures);
 
