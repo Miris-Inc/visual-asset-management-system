@@ -8,7 +8,8 @@
  * (`metadataSchemaDefaultsSeed.test.ts`): create writes it unless an edited row already exists,
  * update rewrites the row only while it exists and its `modifiedBy` is still `SYSTEM_USER`, and both
  * ignore the conditional-check failure a skipped write raises. The calls carry no synth-time value,
- * so a deployment that changes nothing here sends CloudFormation no update for them.
+ * so a deployment that changes nothing here sends CloudFormation no update for them. Like the core
+ * seeds (`seedCustomResourceServiceTimeout.test.ts`), it carries the shared `ServiceTimeout`.
  */
 
 import * as cdk from "aws-cdk-lib";
@@ -16,6 +17,7 @@ import * as iam from "aws-cdk-lib/aws-iam";
 import { Template } from "aws-cdk-lib/assertions";
 import { DynamoDbMetadataSchemaMirisConstruct } from "../../lib/nestedStacks/addon/miris/constructs/dynamodb-metadataschema-miris-construct";
 import mirisStreamSchema from "../../lib/nestedStacks/addon/miris/constructs/dynamodb-metadataschema-miris-stream.json";
+import { SEED_CUSTOM_RESOURCE_SERVICE_TIMEOUT } from "../../lib/helper/seedCustomResource";
 import { newTestApp } from "../support/testApp";
 
 const TABLE = "metadata-schema-table";
@@ -81,6 +83,12 @@ describe("Miris stream metadata schema seeding", () => {
             expect(call.parameters.Item.modifiedBy).toEqual({ S: "SYSTEM_USER" });
             expect(call.parameters.Item.createdBy).toEqual({ S: "SYSTEM_USER" });
         }
+    });
+
+    test("the seed carries the shared seed ServiceTimeout", () => {
+        expect(raw.ServiceTimeout).toBe(
+            SEED_CUSTOM_RESOURCE_SERVICE_TIMEOUT.toSeconds().toString()
+        );
     });
 
     test("the item carries no synth-time timestamp", () => {
