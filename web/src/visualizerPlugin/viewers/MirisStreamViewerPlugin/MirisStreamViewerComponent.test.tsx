@@ -486,13 +486,16 @@ describe("MirisStreamViewerComponent", () => {
             expect(streamElement()).toBeNull();
         });
 
-        it("points to the Needle USD viewer, by its configured name, to view the file now", async () => {
+        it("says the file is not on Miris and points to no other viewer", async () => {
             mockGetMirisStreamStatus.mockResolvedValue(
                 status({ mirisAssetUuid: null, state: "notStreamed" })
             );
             render(<MirisStreamViewerComponent {...baseProps} />);
-            const needleName = viewerEntry("needletools-usd-viewer").name;
-            await waitFor(() => expect(screen.getByText(needleName)).toBeInTheDocument());
+            await waitFor(() =>
+                expect(screen.getByText(/has not been uploaded to miris/i)).toBeInTheDocument()
+            );
+            expect(screen.queryByText(/needle/i)).not.toBeInTheDocument();
+            expect(screen.queryByText(/viewer selector/i)).not.toBeInTheDocument();
         });
 
         it("is not preceded by a registry-driven SDK load", () => {
@@ -814,6 +817,9 @@ describe("MirisStreamViewerComponent", () => {
             expect(mockCan).toHaveBeenCalledWith("GET", ASSET_EXECUTIONS_ROUTE);
             expect(streamButton()).not.toBeInTheDocument();
             expect(screen.queryByText("Automation")).not.toBeInTheDocument();
+            expect(screen.getByText("Uploading to Miris")).toBeInTheDocument();
+            expect(screen.queryByText(/not yet streamed with miris/i)).not.toBeInTheDocument();
+            expect(screen.queryByText(/has not been uploaded to miris/i)).not.toBeInTheDocument();
             expect(
                 screen.getByText(/checks the stream status every 90 seconds/i)
             ).toBeInTheDocument();

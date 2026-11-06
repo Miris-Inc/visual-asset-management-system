@@ -567,12 +567,14 @@ const MirisStreamViewerComponent: React.FC<ViewerPluginProps> = ({
             <div className={styles.guidance}>
                 <div className={styles.guidanceContent}>
                     <SpaceBetween size="m">
-                        <Box variant="h3">Not yet streamed with Miris</Box>
-                        <Box variant="p" color="text-body-secondary">
-                            This USD file has not been uploaded to Miris Spatial Streaming. To view
-                            it now, choose <strong>Needle USD Viewer (Experimental)</strong> in the
-                            viewer selector.
+                        <Box variant="h3">
+                            {running ? "Uploading to Miris" : "Not yet streamed with Miris"}
                         </Box>
+                        {!running && (
+                            <Box variant="p" color="text-body-secondary">
+                                This USD file has not been uploaded to Miris Spatial Streaming.
+                            </Box>
+                        )}
                         {running ? (
                             <Alert type="info" statusIconAriaLabel="Info">
                                 <SpaceBetween size="xs">
