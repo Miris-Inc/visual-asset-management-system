@@ -57,12 +57,13 @@ The pipeline is same-Region only: `vamsExecuteMirisUpload` rejects an input file
     - `POST /v1/content` to start the upload and obtain a Miris asset UUID + short-lived STS credentials.
     - SigV4-signed S3 `PUT` to the Miris temp endpoint (object key matches the declared `content_path` verbatim).
     - `PUT /v1/content/{id}` to mark the upload complete.
+    - Before `POST /v1/content`, the container checks the time left before the run's deadline: the earlier of the inner state machine's timeout (counted from the execution start, so the job queue wait counts against it) and the Batch attempt's, less 300 seconds for the end of the run. When that does not cover the upload estimate (120 seconds plus 5 MiB per second of artifact), it exits 14 (`insufficient_time`) and nothing reaches Miris.
 
-5. **Poll and emit**
+5. **Emit and poll**
 
-    - Polls until Miris reaches a terminal preview/streamable state, then requests streamable processing (`POST /v1/asset/{id}/generate`, best effort).
-    - Writes `{outputS3AssetMetadataPath}<relativeFilePath>.metadata.json`, where `<relativeFilePath>` is the root USD file's path within the asset root (for example `scenes/pump.usda`). The workflow's process-output step applies it to that file as an `update`, so other file metadata is kept.
-    - A failure after `POST /v1/content` (a Miris `error` or `failed` state, a processing timeout, a failed upload `PUT` or metadata write) fails the run but never deletes the Miris asset; the container logs its ID (`miris_asset_kept`). No stream metadata is written for it, so it is not linked to the VAMS file. A timed-out asset can still finish processing: find it in the Miris Portal by its `vams-asset-{assetId}` tag, then link it by setting the file's stream metadata by hand, or delete it there. Running the workflow again uploads a new Miris asset.
+    - Writes `{outputS3AssetMetadataPath}<relativeFilePath>.metadata.json` as soon as the upload is marked complete, where `<relativeFilePath>` is the root USD file's path within the asset root (for example `scenes/pump.usda`). The workflow's process-output step applies it to that file as an `update` when the run succeeds, so other file metadata is kept.
+    - Polls until Miris reaches a terminal preview/streamable state, for at most `taskTimeoutSeconds` or until the run's deadline, then requests streamable processing (`POST /v1/asset/{id}/generate`, best effort). When the wait runs out first, the run succeeds with the file linked to the still-processing asset and skips the request (`processing_unfinished`); an asset left at `preview` is promoted in the Miris Portal.
+    - A failure after `POST /v1/content` (a Miris `error` or `failed` state, a failed upload `PUT` or metadata write) fails the run but never deletes the Miris asset; the container logs its ID (`miris_asset_kept`). The workflow applies no stream metadata for a failed run, so the asset is not linked to the VAMS file: find it in the Miris Portal by its `vams-asset-{assetId}` tag, then link it by setting the file's stream metadata by hand, or delete it there. Running the workflow again uploads a new Miris asset.
 
 ## Output
 
@@ -85,7 +86,7 @@ Configured under `app.addons.useMirisStreaming.upload.*` in `infra/config/config
 
 -   `enabled` - Deploys the pipeline
 -   `triggerExtensions` - Auto-trigger extensions (default `.usd,.usda,.usdc,.usdz`); also the files the gate fingerprints and the container considers as root
--   `taskTimeoutSeconds` - Maximum time the container waits for Miris to report `preview` or `streamable`
+-   `taskTimeoutSeconds` - Maximum time the container waits for Miris to report `preview` or `streamable`; the wait also ends at the run's deadline
 -   `maxAssetSizeBytes` - Maximum source size, checked from the listing before download
 -   `autoRegisterWithVAMS` / `autoRegisterAutoTriggerOnFileUpload` - Workflow auto-registration and upload auto-trigger
 

@@ -58,8 +58,8 @@ def _client():
     return client
 
 
-def _upload_args(write_metadata=None, task_timeout=60):
-    return dict(
+def _upload_args(write_metadata=None, task_timeout=60, **overrides):
+    args = dict(
         name="Pump",
         tags=["vams"],
         upload_local="/workdir/pump.usdz",
@@ -69,6 +69,13 @@ def _upload_args(write_metadata=None, task_timeout=60):
         task_timeout=task_timeout,
         write_metadata=write_metadata or MagicMock(),
     )
+    args.update(overrides)
+    return args
+
+
+def _logs(output, msg):
+    lines = [json.loads(line) for line in output.splitlines() if line.startswith("{")]
+    return [line for line in lines if line.get("msg") == msg]
 
 
 def _run(entry, client, write_metadata=None):
@@ -147,16 +154,114 @@ def test_a_terminal_error_state_exits_8(entry):
     assert exited.value.code == entry.EXIT_MIRIS_FAILED == 8
 
 
-def test_a_processing_timeout_exits_9_without_writing_the_stream_metadata(entry):
+def test_the_stream_metadata_is_written_when_the_upload_completes_before_the_processing_wait(entry):
+    client = _client()
+    write_metadata = MagicMock()
+    order = MagicMock()
+    order.attach_mock(client.mark_upload_complete, "mark_upload_complete")
+    order.attach_mock(write_metadata, "write_metadata")
+    order.attach_mock(client.poll_until_terminal, "poll_until_terminal")
+
+    with patch.object(entry, "_put_artifact"):
+        _run(entry, client, write_metadata)
+
+    names = [name for name, _args, _kwargs in order.mock_calls]
+    assert names.index("mark_upload_complete") < names.index("write_metadata")
+    assert names.index("write_metadata") < names.index("poll_until_terminal")
+
+
+def test_a_processing_wait_that_runs_out_succeeds_linked_without_generate(entry, capsys):
     client = _client()
     client.poll_until_terminal.side_effect = TimeoutError("still processing")
     write_metadata = MagicMock()
 
-    with patch.object(entry, "_put_artifact"), pytest.raises(SystemExit) as exited:
-        entry.upload_or_exit(client, **_upload_args(write_metadata))
+    with patch.object(entry, "_put_artifact"):
+        assert entry.upload_or_exit(client, **_upload_args(write_metadata)) == UUID
 
-    assert exited.value.code == entry.EXIT_MIRIS_TIMEOUT == 9
-    write_metadata.assert_not_called()
+    write_metadata.assert_called_once_with(UUID)
+    client.trigger_generate_best_effort.assert_not_called()
+    output = capsys.readouterr().out
+    assert [line["asset_uuid"] for line in _logs(output, "processing_unfinished")] == [UUID]
+    assert _kept_asset_logs(output) == []
+
+
+NOW = 10_000.0
+
+
+def _budget(entry):
+    return entry.time_budget
+
+
+def test_the_processing_wait_ends_before_the_run_deadline(entry):
+    client = _client()
+    deadline = NOW + _budget(entry).END_RESERVE_SECONDS + 600
+
+    with patch.object(entry, "_put_artifact"):
+        entry.run_miris_upload(
+            client, **_upload_args(task_timeout=1800, deadline=deadline, clock=lambda: NOW))
+
+    assert client.poll_until_terminal.call_args.kwargs["timeout_seconds"] == 600
+
+
+def test_the_processing_wait_is_task_timeout_when_the_deadline_is_further_off(entry):
+    client = _client()
+    deadline = NOW + _budget(entry).END_RESERVE_SECONDS + 10_000
+
+    with patch.object(entry, "_put_artifact"):
+        entry.run_miris_upload(
+            client, **_upload_args(task_timeout=60, deadline=deadline, clock=lambda: NOW))
+
+    assert client.poll_until_terminal.call_args.kwargs["timeout_seconds"] == 60
+
+
+def test_the_processing_wait_is_task_timeout_without_a_deadline(entry):
+    client = _client()
+
+    with patch.object(entry, "_put_artifact"):
+        entry.run_miris_upload(client, **_upload_args(task_timeout=60, deadline=None))
+
+    assert client.poll_until_terminal.call_args.kwargs["timeout_seconds"] == 60
+
+
+def test_a_deadline_reached_during_the_upload_still_checks_the_state_once(entry):
+    client = _client()
+    clock = iter([NOW, NOW + 10_000])
+    deadline = NOW + _budget(entry).END_RESERVE_SECONDS + _budget(entry).upload_seconds_needed(10) + 1
+
+    with patch.object(entry, "_put_artifact"):
+        entry.run_miris_upload(
+            client, **_upload_args(deadline=deadline, clock=lambda: next(clock)))
+
+    assert client.poll_until_terminal.call_args.kwargs["timeout_seconds"] == 0
+
+
+def test_too_little_time_left_exits_14_before_anything_reaches_miris(entry, capsys):
+    client = _client()
+    size = 100 * 1024 * 1024
+    needed = _budget(entry).upload_seconds_needed(size)
+    deadline = NOW + _budget(entry).END_RESERVE_SECONDS + needed - 1
+    put = MagicMock()
+
+    with patch.object(entry, "_put_artifact", put), pytest.raises(SystemExit) as exited:
+        entry.upload_or_exit(
+            client, **_upload_args(size=size, deadline=deadline, clock=lambda: NOW))
+
+    assert exited.value.code == entry.EXIT_INSUFFICIENT_TIME == 14
+    client.start_upload.assert_not_called()
+    put.assert_not_called()
+    [line] = _logs(capsys.readouterr().out, "insufficient_time")
+    assert line["seconds_left"] == int(needed - 1)
+    assert line["seconds_needed"] == int(needed)
+
+
+def test_just_enough_time_left_uploads(entry):
+    client = _client()
+    size = 100 * 1024 * 1024
+    deadline = NOW + _budget(entry).END_RESERVE_SECONDS + _budget(entry).upload_seconds_needed(size)
+
+    with patch.object(entry, "_put_artifact"):
+        assert entry.upload_or_exit(
+            client, **_upload_args(size=size, deadline=deadline, clock=lambda: NOW)) == UUID
 
 
 def _miris_api(asset_state):
@@ -172,12 +277,12 @@ def _miris_api(asset_state):
 
 @responses.activate
 @pytest.mark.parametrize("failure,asset_state,expected", [
-    ("processing_timeout", "processing_preview", 9),
+    ("processing_unfinished", "processing_preview", None),
     ("terminal_error", "failed", 8),
     ("s3_put", "preview", RuntimeError),
     ("metadata_write", "preview", RuntimeError),
 ])
-def test_no_failure_sends_a_delete_to_miris(entry, capsys, failure, asset_state, expected):
+def test_no_outcome_sends_a_delete_to_miris(entry, capsys, failure, asset_state, expected):
     from miris_uploader import MirisClient
 
     _miris_api(asset_state)
@@ -188,7 +293,9 @@ def test_no_failure_sends_a_delete_to_miris(entry, capsys, failure, asset_state,
     args = _upload_args(write_metadata, task_timeout=0)
 
     with patch.object(entry, "_put_artifact", put):
-        if isinstance(expected, int):
+        if expected is None:
+            assert entry.upload_or_exit(client, **args) == UUID
+        elif isinstance(expected, int):
             with pytest.raises(SystemExit) as exited:
                 entry.upload_or_exit(client, **args)
             assert exited.value.code == expected
@@ -201,9 +308,11 @@ def test_no_failure_sends_a_delete_to_miris(entry, capsys, failure, asset_state,
     assert methods[0] == "POST"
     assert "DELETE" not in methods, methods
     kept = _kept_asset_logs(capsys.readouterr().out)
-    assert [line["asset_uuid"] for line in kept] == [UUID]
-    if failure != "metadata_write":
+    assert [line["asset_uuid"] for line in kept] == ([] if expected is None else [UUID])
+    if failure == "s3_put":
         write_metadata.assert_not_called()
+    else:
+        write_metadata.assert_called_once_with(UUID)
 
 
 def _module_int_constants(path, prefix):
@@ -234,3 +343,5 @@ def test_every_exit_code_has_a_user_facing_reason_in_the_end_lambda():
     assert len(set(codes.values())) == len(codes), "two exit codes share a value"
     reasons = _end_lambda_exit_codes()
     assert set(codes.values()) | {1} <= reasons, sorted(set(codes.values()) - reasons)
+    # Nor a reason for a code the container does not exit with.
+    assert reasons <= set(codes.values()) | {1}, sorted(reasons - set(codes.values()) - {1})

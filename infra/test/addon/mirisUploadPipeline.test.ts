@@ -110,6 +110,21 @@ describe("Miris upload timeouts", () => {
         expect(executionSeconds).toBe(attemptSeconds() + MIRIS_UPLOAD_ORCHESTRATION_MARGIN_SECONDS);
     });
 
+    test("the container is given the execution's start and both time limits", () => {
+        const asl = parseAsl(singleStateMachine(template));
+        const environment: { Name: string; Value?: string; "Value.$"?: string }[] =
+            asl.States.SubmitMirisUploadBatchJob.Parameters.ContainerOverrides.Environment;
+        const byName = Object.fromEntries(environment.map((e) => [e.Name, e]));
+        expect(byName.MIRIS_UPLOAD_EXECUTION_START_TIME).toEqual({
+            Name: "MIRIS_UPLOAD_EXECUTION_START_TIME",
+            "Value.$": "$$.Execution.StartTime",
+        });
+        expect(byName.MIRIS_UPLOAD_EXECUTION_TIMEOUT_SECONDS.Value).toBe(
+            String(asl.TimeoutSeconds)
+        );
+        expect(byName.MIRIS_UPLOAD_ATTEMPT_DURATION_SECONDS.Value).toBe(String(attemptSeconds()));
+    });
+
     test("the workflow task timeout in the vamsSchema bundle covers the state machine", () => {
         const pipeline = JSON.parse(
             fs.readFileSync(path.join(PIPELINE_DIR, "vamsSchema", "pipeline.json"), "utf-8")

@@ -189,6 +189,8 @@ export class MirisUploadConstruct extends Construct {
 
         const attemptDurationSeconds =
             upload.taskTimeoutSeconds + MIRIS_UPLOAD_CONTAINER_OVERHEAD_SECONDS;
+        const executionTimeoutSeconds =
+            attemptDurationSeconds + MIRIS_UPLOAD_ORCHESTRATION_MARGIN_SECONDS;
 
         // Batch Fargate pipeline
         const batchPipeline = new BatchFargatePipelineConstruct(
@@ -270,8 +272,13 @@ export class MirisUploadConstruct extends Construct {
             jobQueueArn: batchPipeline.batchJobQueue.jobQueueArn,
             containerOverrides: {
                 command: [...sfn.JsonPath.listAt("$.definition")],
+                // The container ends before either time limit stops it (time_budget.py).
                 environment: {
                     AWS_REGION: region,
+                    MIRIS_UPLOAD_EXECUTION_START_TIME:
+                        sfn.JsonPath.stringAt("$$.Execution.StartTime"),
+                    MIRIS_UPLOAD_EXECUTION_TIMEOUT_SECONDS: String(executionTimeoutSeconds),
+                    MIRIS_UPLOAD_ATTEMPT_DURATION_SECONDS: String(attemptDurationSeconds),
                 },
             },
             integrationPattern: sfn.IntegrationPattern.RUN_JOB,
@@ -342,9 +349,7 @@ export class MirisUploadConstruct extends Construct {
 
         const stateMachine = new sfn.StateMachine(this, "MirisUploadInnerStateMachine", {
             definitionBody: sfn.DefinitionBody.fromChainable(definition),
-            timeout: cdk.Duration.seconds(
-                attemptDurationSeconds + MIRIS_UPLOAD_ORCHESTRATION_MARGIN_SECONDS
-            ),
+            timeout: cdk.Duration.seconds(executionTimeoutSeconds),
             logs: {
                 destination: stateMachineLogGroup,
                 includeExecutionData: true,

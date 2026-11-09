@@ -72,16 +72,16 @@ The Miris content API accepts one self-contained file per asset. A root `.usd`, 
 
 ## What the container does
 
-The container lists the asset under its resolved root, which carries the bucket's `baseAssetsPrefix` or the asset's existing-key location, and chooses the root USD file. It checks `maxAssetSizeBytes` against the sizes in that listing before it downloads anything: a lone `.usdz` root counts alone, and otherwise every file under the asset root counts. It downloads what it needs, preserving the relative layout so USD references resolve. The selected file is read at the Amazon S3 version the run recorded at launch (the version picked on the execute form, or the one current when the run started), and the other layers at their current version. Each candidate root is pinned to the version it was read at. It then packages a multi-file root and runs the Miris upload:
+The container lists the asset under its resolved root, which carries the bucket's `baseAssetsPrefix` or the asset's existing-key location, and chooses the root USD file. It checks `maxAssetSizeBytes` against the sizes in that listing before it downloads anything: a lone `.usdz` root counts alone, and otherwise every file under the asset root counts. It downloads what it needs, preserving the relative layout so USD references resolve. The selected file is read at the Amazon S3 version the run recorded at launch (the version picked on the execute form, or the one current when the run started), and the other layers at their current version. Each candidate root is pinned to the version it was read at. It then packages a multi-file root and, when the time left before the run's deadline covers the upload (see [Time limits](#time-limits)), runs the Miris upload:
 
 1. `POST /v1/content` starts the upload and returns a Miris asset ID and short-lived upload credentials.
 2. A SigV4-signed `PUT` sends the file to the Miris upload storage, under the exact file name declared as the content path.
 3. `PUT /v1/content/{id}` with `{"status": "completed"}` marks the upload complete.
-4. `GET /v1/asset/{id}` is polled every 10 seconds until the asset's state is `preview` or `streamable`, for at most `taskTimeoutSeconds`. A state of `error` or `failed` fails the run.
-5. `POST /v1/asset/{id}/generate` requests streamable processing. This step is best effort: when it fails, the asset can be promoted in the Miris Portal.
-6. The stream metadata file for the root USD file is written to the run's metadata output path (see [What the pipeline writes](#what-the-pipeline-writes)).
+4. The stream metadata file for the root USD file is written to the run's metadata output path (see [What the pipeline writes](#what-the-pipeline-writes)). The workflow applies it to the file when the run succeeds.
+5. `GET /v1/asset/{id}` is polled every 10 seconds until the asset's state is `preview` or `streamable`, for at most `taskTimeoutSeconds` or until the run's deadline, whichever comes first. A state of `error` or `failed` fails the run. When the wait runs out first, the run succeeds with the file linked to the asset, which keeps processing in Miris, and step 6 is skipped.
+6. `POST /v1/asset/{id}/generate` requests streamable processing. This step is best effort: when it fails or is skipped, the asset can be promoted in the Miris Portal once it reaches `preview`.
 
-The container retries its idempotent Miris calls (`GET` and `PUT`) with backoff after a transient request failure or a `429`, `500`, `502`, `503`, or `504` response, and never retries the request that creates the asset. The container never deletes a Miris asset. When a step fails after the Miris asset exists, the run fails, the asset is kept in Miris without stream metadata, and the container logs its ID in a `miris_asset_kept` entry; see [Kept Miris assets](#kept-miris-assets). The container runs as a non-root user.
+The container retries its idempotent Miris calls (`GET` and `PUT`) with backoff after a transient request failure or a `429`, `500`, `502`, `503`, or `504` response, and never retries the request that creates the asset. The container never deletes a Miris asset. When a step fails after the Miris asset exists, the run fails, the asset is kept in Miris and is not linked to the file (the workflow applies the stream metadata only for a run that succeeds), and the container logs its ID in a `miris_asset_kept` entry; see [Kept Miris assets](#kept-miris-assets). The container runs as a non-root user.
 
 ### Miris asset name and tags
 
@@ -122,10 +122,12 @@ After upload, Miris processes the asset, typically for 1–2 hours, before it is
 
 | Limit                 | Value                                        | What it bounds                                                                                                                                    |
 | --------------------- | -------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Miris processing wait | `taskTimeoutSeconds` (default 1,800 seconds) | Step 4. When Miris does not report `preview` or `streamable` in time, the run fails with exit code 9 and the Miris asset is kept, unlinked.       |
+| Miris processing wait | `taskTimeoutSeconds` (default 1,800 seconds) | Step 5. When Miris does not report `preview` or `streamable` in time, the run succeeds with the file linked to the still-processing asset.        |
 | AWS Batch job attempt | `taskTimeoutSeconds` plus 1,200 seconds      | The download, packaging, upload, and metadata write beyond the processing wait                                                                    |
 | Inner state machine   | The job attempt limit plus 1,800 seconds     | The job queue wait and the pipeline's Lambda functions                                                                                            |
 | Workflow task         | 172,800 seconds (48 hours)                   | The calling workflow's wait for the callback (`executionConfig.taskTimeout` in `vamsSchema/pipeline.json`); not derived from `taskTimeoutSeconds` |
+
+The inner state machine passes the container its execution start time and both of its time limits. The run's deadline is the earlier of the inner execution's end, counted from the execution start so that the job queue wait counts against it, and the job attempt's end, less 300 seconds kept for the end of the run. Before it creates the Miris asset, the container estimates the upload at 120 seconds plus 5 MiB per second of artifact; when the time left is shorter, the run fails with exit code 14 and nothing reaches Miris. The processing wait ends at the deadline when that comes before `taskTimeoutSeconds`, so a job that starts late is not stopped while its upload is in progress.
 
 When the inner execution times out, is stopped, or fails without reaching its own failure step, an Amazon EventBridge rule on its status change invokes the pipeline's end Lambda function, which releases the upload claim and fails the workflow task with a reason, so the workflow does not wait out its 48 hours.
 
@@ -145,19 +147,20 @@ A failed run reports one of these reasons to the workflow execution, chosen from
 | 6         | The asset has no USD file to upload, or every USD file in it is referenced by another.                                                                                                                                           |
 | 7         | The run has no metadata output location for the stream metadata.                                                                                                                                                                 |
 | 8         | Miris rejected the upload or could not process it. See the container log. Any Miris asset the run created is kept.                                                                                                               |
-| 9         | Miris did not finish processing the asset within `taskTimeoutSeconds`. The Miris asset is kept and may still finish.                                                                                                             |
 | 10        | The asset has more than one root USD file (`ambiguous_root`).                                                                                                                                                                    |
 | 11        | A USD file in the asset is empty or malformed (`unreadable_layer`). The container log's `unreadable_layer` entry names the file.                                                                                                 |
 | 12        | The USD file references a layer or asset outside the VAMS asset (`reference_outside_asset`), such as an absolute path or a `..` path that leaves the asset. The container log's `reference_outside_asset` entry names the files. |
 | 13        | The file version the run was started on no longer exists (`input_version_missing`), for example a version deleted after launch. The container log's `input_version_missing` entry names the file and the version.                |
+| 14        | The upload job started too late to finish within the pipeline's time limit, for example after a long AWS Batch job queue wait (`insufficient_time`). Nothing was uploaded to Miris; start the run again.                         |
 
 A job stopped at its time limit, an inner execution that timed out or was stopped, and a failure in one of the pipeline's Lambda functions each report their own reason. The pipeline's `vamsExecute` function also rejects a run whose input file or output bucket is in another AWS Region before anything is claimed or uploaded, and names the Regions in the reason. The container log is in the `/aws/vendedlogs/Pipelines/MirisUpload<hash>` log group, and the state machine log in `/aws/vendedlogs/VAMSStateMachine-MirisUpload<hash>`.
 
 ### Kept Miris assets
 
-A run that fails after `POST /v1/content` created the Miris asset keeps that asset in Miris and writes no stream metadata, so the asset is not linked to the VAMS file. That covers a Miris `error` or `failed` state (exit code 8), a processing wait that times out (exit code 9), and a failed upload `PUT` or metadata write (exit code 1). The reasons for exit codes 1, 8, and 9 name the asset's `vams-asset-{assetId}` tag.
+A run that fails after `POST /v1/content` created the Miris asset keeps that asset in Miris, and the workflow applies no stream metadata for it, so the asset is not linked to the VAMS file. That covers a Miris `error` or `failed` state (exit code 8) and a failed upload `PUT` or metadata write (exit code 1). The reasons for exit codes 1 and 8 name the asset's `vams-asset-{assetId}` tag.
 
--   **A timed-out asset can still finish.** Miris keeps processing an asset after the run stops waiting for it. Find it in the Miris Portal by its `vams-asset-{assetId}` tag, and once it reaches `preview` or `streamable`, link it by [setting the file's stream metadata by hand](../developer/miris-spatial-streaming.md#editing-the-stream-metadata), or delete it in the Miris Portal.
+-   **A kept asset can be linked by hand.** Find it in the Miris Portal by its `vams-asset-{assetId}` tag, and once it reaches `preview` or `streamable`, link it by [setting the file's stream metadata by hand](../developer/miris-spatial-streaming.md#editing-the-stream-metadata), or delete it in the Miris Portal.
+-   **A processing wait that runs out is not a failure.** The file is linked to the asset, which keeps processing in Miris, and the viewer shows it as being prepared. The run did not request streamable processing, so an asset that stays at `preview` is promoted in the Miris Portal.
 -   **Running the workflow again uploads a new Miris asset.** The kept asset stays in Miris until it is deleted there.
 
 ---

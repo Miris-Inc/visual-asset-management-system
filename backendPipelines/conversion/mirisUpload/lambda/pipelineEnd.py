@@ -50,9 +50,6 @@ EXIT_CODE_REASONS = {
     7: "The run has no metadata output location for the Miris stream metadata.",
     8: "Miris rejected the upload or could not process it. See the container log. "
        "Any Miris asset the run created is kept; find it in Miris by the tag {tag}.",
-    9: "Miris did not finish processing the asset within "
-       "app.addons.useMirisStreaming.upload.taskTimeoutSeconds. The Miris asset is kept and may "
-       "still finish; find it in Miris by the tag {tag}.",
     10: "The asset has more than one root USD file (ambiguous_root): no other USD file in the asset "
         "references them. Keep one root layer per asset, or reference the others from it.",
     11: "A USD file in the asset is empty or malformed and could not be read (unreadable_layer). "
@@ -63,6 +60,9 @@ EXIT_CODE_REASONS = {
     13: "The file version this run was started on no longer exists (input_version_missing). The "
         "container log's input_version_missing entry names the file and the version; start the run "
         "again on a version that exists.",
+    14: "The Miris upload job started too late to finish within the pipeline's time limit, for "
+        "example after a long AWS Batch job queue wait (insufficient_time). Nothing was uploaded to "
+        "Miris; start the run again.",
 }
 
 EXECUTION_STATUS_REASONS = {

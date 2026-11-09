@@ -7,12 +7,16 @@ asset under its resolved root, chooses the root USD file (the one layer no other
 asset references, or the single .usdz), runs the Miris upload flow, writes the Miris stream
 metadata for that root file to the run's metadata output path, and exits 0/non-0. A Miris asset the
 run created is never deleted, whatever the outcome.
+
+The run ends before its deadline (time_budget): it uploads nothing when too little time is left for
+the upload, and its wait for Miris processing ends before the deadline does.
 """
 import datetime
 import hashlib
 import json
 import os
 import sys
+import time
 import boto3
 from botocore.config import Config
 from botocore.exceptions import ClientError
@@ -23,6 +27,7 @@ from stream_metadata import (
     metadata_object_key,
     metadata_output_location,
 )
+import time_budget
 from upload_config import resolve_upload_config
 from usd_packager import (
     UnreadableLayerError,
@@ -49,11 +54,11 @@ EXIT_UNRESOLVED_REFERENCES = 5
 EXIT_ROOT_NOT_FOUND = 6
 EXIT_NO_METADATA_OUTPUT = 7
 EXIT_MIRIS_FAILED = 8
-EXIT_MIRIS_TIMEOUT = 9
 EXIT_AMBIGUOUS_ROOT = 10
 EXIT_UNREADABLE_LAYER = 11
 EXIT_REFERENCE_OUTSIDE_ASSET = 12
 EXIT_INPUT_VERSION_MISSING = 13
+EXIT_INSUFFICIENT_TIME = 14
 
 WORKDIR = "/workdir"
 
@@ -192,14 +197,31 @@ def _put_artifact(start, upload_local, upload_filename, content_type):
     _log("sigv4_put_complete", bucket=temp_bucket, key=temp_key)
 
 
-def run_miris_upload(client, *, name, tags, upload_local, upload_filename, content_type,
-                     size, task_timeout, write_metadata):
-    """Create the Miris asset, upload the artifact, wait for processing and record the result.
+class InsufficientTimeError(Exception):
+    """Too little of the run's time is left to upload the artifact; nothing was sent to Miris."""
 
-    A failure after the asset exists, a processing timeout included, keeps the asset in Miris, where
-    it can still finish processing, and logs its id (miris_asset_kept); no stream metadata is written
-    for it. Returns the Miris asset id.
+    def __init__(self, seconds_left: float, seconds_needed: float):
+        super().__init__(f"{int(seconds_left)}s left, {int(seconds_needed)}s needed for the upload")
+        self.seconds_left = seconds_left
+        self.seconds_needed = seconds_needed
+
+
+def run_miris_upload(client, *, name, tags, upload_local, upload_filename, content_type,
+                     size, task_timeout, write_metadata, deadline=None, clock=time.time):
+    """Create the Miris asset, upload the artifact, record it on the file and wait for processing.
+
+    The stream metadata is written as soon as Miris has the upload, so the file is linked to the
+    asset whether or not processing finishes within the wait; a wait that runs out ends the run
+    with the asset still processing and its streamable promotion skipped. A failure after the asset
+    exists keeps the asset in Miris and logs its id (miris_asset_kept). Raises
+    InsufficientTimeError, before anything reaches Miris, when the time left before `deadline`
+    does not cover the upload. Returns the Miris asset id.
     """
+    left = time_budget.seconds_left(deadline, clock())
+    needed = time_budget.upload_seconds_needed(size)
+    if left is not None and left < needed:
+        raise InsufficientTimeError(left, needed)
+
     start = client.start_upload(
         name=name,
         content_path=upload_filename,
@@ -214,7 +236,18 @@ def run_miris_upload(client, *, name, tags, upload_local, upload_filename, conte
         client.mark_upload_complete(asset_uuid)
         _log("upload_marked_complete", asset_uuid=asset_uuid)
 
-        ready = client.poll_until_terminal(asset_uuid, timeout_seconds=task_timeout)
+        write_metadata(asset_uuid)
+
+        wait = task_timeout
+        left = time_budget.seconds_left(deadline, clock())
+        if left is not None:
+            wait = max(0, min(task_timeout, int(left)))
+        try:
+            ready = client.poll_until_terminal(asset_uuid, timeout_seconds=wait)
+        except TimeoutError as e:
+            _log("processing_unfinished", asset_uuid=asset_uuid, error=str(e))
+            _log("generate_skipped", reason="processing_unfinished")
+            return asset_uuid
         _log("terminal_state_reached", state=ready.get("state"))
 
         # Streamable promotion is best effort; manual promotion in the Miris Portal is the fallback.
@@ -223,8 +256,6 @@ def run_miris_upload(client, *, name, tags, upload_local, upload_filename, conte
             _log("generate_skipped", reason="endpoint_unavailable_or_failed")
         else:
             _log("generate_triggered", state=gen.get("state"))
-
-        write_metadata(asset_uuid)
     except BaseException as e:
         _log("miris_asset_kept", asset_uuid=asset_uuid, error=str(e))
         raise
@@ -232,19 +263,21 @@ def run_miris_upload(client, *, name, tags, upload_local, upload_filename, conte
 
 
 def upload_or_exit(client, **upload_args):
-    """Run the upload, exiting with the code for a Miris failure or a Miris processing timeout.
-    Any other failure propagates and exits 1."""
+    """Run the upload, exiting with the code for a Miris failure or for too little time left to
+    upload. Any other failure propagates and exits 1."""
     try:
         return run_miris_upload(client, **upload_args)
+    except InsufficientTimeError as e:
+        _log("insufficient_time", seconds_left=int(e.seconds_left),
+             seconds_needed=int(e.seconds_needed))
+        sys.exit(EXIT_INSUFFICIENT_TIME)
     except MirisError as e:
         _log("miris_upload_failed", error=str(e))
         sys.exit(EXIT_MIRIS_FAILED)
-    except TimeoutError as e:
-        _log("miris_processing_timed_out", error=str(e))
-        sys.exit(EXIT_MIRIS_TIMEOUT)
 
 
 def main():
+    deadline = time_budget.run_deadline(os.environ, time.time())
     if len(sys.argv) < 2:
         _log("usage: __main__.py <definition-json>")
         sys.exit(EXIT_USAGE)
@@ -433,6 +466,7 @@ def main():
         size=size,
         task_timeout=task_timeout,
         write_metadata=write_metadata,
+        deadline=deadline,
     )
 
 

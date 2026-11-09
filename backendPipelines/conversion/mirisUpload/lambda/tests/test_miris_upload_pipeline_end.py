@@ -130,7 +130,7 @@ def test_release_failure_does_not_mask_the_pipeline_failure(end):
     sfn.send_task_failure.assert_called_once()
 
 
-@pytest.mark.parametrize("exit_code", sorted([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13]))
+@pytest.mark.parametrize("exit_code", sorted([1, 2, 3, 4, 5, 6, 7, 8, 10, 11, 12, 13, 14]))
 def test_every_container_exit_code_maps_to_a_reason_not_the_job_description(end, exit_code):
     cause = _batch_cause(exit_code)
     reason = end.failure_reason("States.TaskFailed", cause)
@@ -139,7 +139,16 @@ def test_every_container_exit_code_maps_to_a_reason_not_the_job_description(end,
     assert "JobId" not in reason and "{" not in reason
 
 
-@pytest.mark.parametrize("exit_code", [1, 8, 9])
+def test_too_little_time_left_says_nothing_reached_miris_and_to_run_again(end):
+    reason = end.failure_reason("States.TaskFailed", _batch_cause(14), "a1")
+
+    assert "Nothing was uploaded to Miris" in reason
+    assert "again" in reason
+    assert "vams-asset" not in reason
+    assert len(reason) <= end.CAUSE_MAX_CHARS
+
+
+@pytest.mark.parametrize("exit_code", [1, 8])
 def test_a_failure_after_the_miris_asset_exists_says_it_is_kept_and_names_its_tag(end, exit_code):
     with patch.object(end, "sfn") as sfn, patch.object(end, "s3_client"):
         end.lambda_handler(_event(status="failed", errorType="States.TaskFailed",
@@ -150,7 +159,7 @@ def test_a_failure_after_the_miris_asset_exists_says_it_is_kept_and_names_its_ta
     assert cause.endswith("find it in Miris by the tag vams-asset-a1.")
 
 
-@pytest.mark.parametrize("exit_code", [1, 8, 9])
+@pytest.mark.parametrize("exit_code", [1, 8])
 def test_a_kept_asset_reason_fits_the_cause_limit_with_a_full_length_asset_id(end, exit_code):
     asset_id = "a" * 63
     reason = end.failure_reason("States.TaskFailed", _batch_cause(exit_code), asset_id)
@@ -160,7 +169,7 @@ def test_a_kept_asset_reason_fits_the_cause_limit_with_a_full_length_asset_id(en
 
 
 def test_a_kept_asset_reason_without_an_asset_id_names_the_tag_pattern(end):
-    reason = end.failure_reason("States.TaskFailed", _batch_cause(9))
+    reason = end.failure_reason("States.TaskFailed", _batch_cause(8))
 
     assert reason.endswith("vams-asset-<assetId>.")
 
