@@ -109,30 +109,35 @@ This software includes third party software subject to the following copyrights:
 
 **3D Visualization Libraries**
 
-| Package                    | Version                                                      | License               |
-| :------------------------- | :----------------------------------------------------------- | :-------------------- |
-| @babylonjs/core            | [8.33.0](https://www.npmjs.com/package/@babylonjs/core)      | Apache-2.0            |
-| @babylonjs/loaders         | [8.33.0](https://www.npmjs.com/package/@babylonjs/loaders)   | Apache-2.0            |
-| @needle-tools/engine       | [aab170a](https://github.com/needle-tools/usd-viewer)        | Apache-2.0 (Modified) |
-| @thatopen/components       | [3.4.6](https://github.com/ThatOpen/engine_components)       | MIT                   |
-| @thatopen/components-front | [3.4.3](https://github.com/ThatOpen/engine_components)       | MIT                   |
-| @thatopen/fragments        | [3.4.5](https://github.com/ThatOpen/engine_fragment)         | MIT                   |
-| camera-controls            | [3.1.2](https://github.com/yomotsu/camera-controls)          | MIT                   |
-| @cesium/engine             | [26.4.0](https://github.com/CesiumGS/cesium)                 | Apache-2.0            |
-| fflate                     | [0.8.2](https://github.com/101arrowz/fflate)                 | MIT                   |
-| lichtblick                 | [v1.29.1](https://github.com/lichtblick-suite/lichtblick)    | MPL-2.0\*\*\*         |
-| online-3d-viewer           | [0.18.0](https://github.com/kovacsv/Online3DViewer)          | MIT                   |
-| playcanvas                 | [2.23.3](https://github.com/playcanvas/engine)               | MIT                   |
-| potree                     | [f6ac2d3b](https://github.com/potree/potree)                 | BSD-2-Clause          |
-| supersplat                 | [v3.1.1](https://github.com/playcanvas/supersplat)           | MIT                   |
-| three                      | [0.187.0, 0.182.0](https://threejs.org/)                     | MIT                   |
-| occt-import-js             | [0.0.22](https://github.com/kovacsv/occt-import-js)          | LGPL-2.1\*            |
-| web-ifc                    | [0.0.77, 0.0.68](https://github.com/ThatOpen/engine_web-ifc) | MPL-2.0\*\*           |
-| draco3d                    | [1.5.7](https://github.com/google/draco)                     | Apache-2.0            |
-| rhino3dm                   | [8.17.0](https://github.com/mcneel/rhino3dm)                 | MIT                   |
-| @simonwep/pickr            | [1.9.0](https://github.com/Simonwep/pickr)                   | MIT                   |
+| Package                    | Version                                                              | License               |
+| :------------------------- | :------------------------------------------------------------------- | :-------------------- |
+| @babylonjs/core            | [8.33.0](https://www.npmjs.com/package/@babylonjs/core)              | Apache-2.0            |
+| @miris-inc/components      | [0.0.8-d3cdf31](https://www.npmjs.com/package/@miris-inc/components) | Apache-2.0            |
+| @miris-inc/core            | [0.0.8-d3cdf31](https://www.npmjs.com/package/@miris-inc/core)       | Apache-2.0            |
+| @miris-inc/three           | [0.0.8-d3cdf31](https://www.npmjs.com/package/@miris-inc/three)      | Apache-2.0            |
+| @babylonjs/loaders         | [8.33.0](https://www.npmjs.com/package/@babylonjs/loaders)           | Apache-2.0            |
+| @needle-tools/engine       | [aab170a](https://github.com/needle-tools/usd-viewer)                | Apache-2.0 (Modified) |
+| @thatopen/components       | [3.4.6](https://github.com/ThatOpen/engine_components)               | MIT                   |
+| @thatopen/components-front | [3.4.3](https://github.com/ThatOpen/engine_components)               | MIT                   |
+| @thatopen/fragments        | [3.4.5](https://github.com/ThatOpen/engine_fragment)                 | MIT                   |
+| camera-controls            | [3.1.2](https://github.com/yomotsu/camera-controls)                  | MIT                   |
+| @cesium/engine             | [26.4.0](https://github.com/CesiumGS/cesium)                         | Apache-2.0            |
+| fflate                     | [0.8.2](https://github.com/101arrowz/fflate)                         | MIT                   |
+| lichtblick                 | [v1.29.1](https://github.com/lichtblick-suite/lichtblick)            | MPL-2.0\*\*\*         |
+| online-3d-viewer           | [0.18.0](https://github.com/kovacsv/Online3DViewer)                  | MIT                   |
+| playcanvas                 | [2.23.3](https://github.com/playcanvas/engine)                       | MIT                   |
+| potree                     | [f6ac2d3b](https://github.com/potree/potree)                         | BSD-2-Clause          |
+| supersplat                 | [v3.1.1](https://github.com/playcanvas/supersplat)                   | MIT                   |
+| three                      | [0.187.0, 0.185.1, 0.182.0](https://threejs.org/)                    | MIT                   |
+| occt-import-js             | [0.0.22](https://github.com/kovacsv/occt-import-js)                  | LGPL-2.1\*            |
+| web-ifc                    | [0.0.77, 0.0.68](https://github.com/ThatOpen/engine_web-ifc)         | MPL-2.0\*\*           |
+| draco3d                    | [1.5.7](https://github.com/google/draco)                             | Apache-2.0            |
+| rhino3dm                   | [8.17.0](https://github.com/mcneel/rhino3dm)                         | MIT                   |
+| @simonwep/pickr            | [1.9.0](https://github.com/Simonwep/pickr)                           | MIT                   |
 
 The That Open Engine packages, `camera-controls`, `fflate`, and `web-ifc` are built into the self-contained IFC/BIM viewer bundle declared in `web/customInstalls/thatopenwebifc/package.json`. `supersplat` is the PlayCanvas SuperSplat editor, cloned at the pinned tag by `web/customInstalls/supersplat/superSplatInstall.js`, built, and served from `web/public/viewers/supersplat`; that script also copies the upstream license text to `THIRD_PARTY_LICENSE_SUPERSPLAT.txt` beside the built viewer. `web-ifc`, `rhino3dm`, `occt-import-js` and `draco3d` are also declared by the Online3DViewer install (`web/customInstalls/online3dviewer/package.json`), whose script copies each beside the viewer bundle in place of the CDN URLs the upstream bundle requests; that viewer carries its own `web-ifc` 0.0.68 alongside the 0.0.77 in the IFC/BIM bundle. `@simonwep/pickr` arrives with `online-3d-viewer` and the version shown is the one resolved in that install's lockfile. `@needle-tools/engine` ships inside the prebuilt USD viewer that `web/customInstalls/needletools-usd-viewer/usdViewerInstall.js` clones from `needle-tools/usd-viewer` at the commit shown, and `potree` is cloned at the commit shown and patched by `web/customInstalls/potree/potreeInstall.js`. `lichtblick` is the Lichtblick robotics visualization web app, cloned at the tag shown (commit `95713edb309d77589b130286642ab149995a5f7b`, verified before the build) by `web/customInstalls/robotics/roboticsViewerInstall.js`, installed from its own upstream lockfile, built with a VAMS-authored overlay, and served from `web/public/viewers/robotics`; that script copies the upstream license text to `THIRD_PARTY_LICENSE_LICHTBLICK.txt` and writes `SOURCE.txt` (repository, tag and commit) beside the built viewer. The built viewer also contains the npm packages that lockfile resolves, each under its own license.
+
+The `@miris-inc/*` packages are the Miris web SDK, used by the optional Miris Spatial Streaming add-on viewer. They are declared, with the `three` 0.185.1 they render with, in `web/customInstalls/miris/package.json`, and `web/customInstalls/miris/mirisInstall.js` bundles them into `web/public/viewers/miris` only when that viewer is enabled; the other custom installs carry their own `three` 0.182.0. Streaming with the SDK calls [Miris](https://miris.com/) Spatial Streaming, a commercial service on the public internet that requires a Miris account and is subject to the Miris terms of service.
 
 \* **OpenCascade Technology (OCCT) License Note**: `occt-import-js` is the OpenCascade-based importer for STEP (.stp, .step), IGES (.iges), and BREP (.brep) files used by the Online3DViewer viewer. The install script copies its worker script, JavaScript, and WebAssembly binary beside the viewer bundle in place of the CDN URL the upstream bundle requests, and the viewer loads them only when a file in one of those formats is opened. It is distributed under LGPL-2.1 and is consumed unmodified as a separately loaded module, so the LGPL-2.1 terms apply to that library's own files. The Three.js viewer bundle does not include it; `web/customInstalls/threejs/package.json` describes how to add it.
 
@@ -369,6 +374,27 @@ The Video SOP/BOM Extraction container uses the Debian-based `python:3.12-slim` 
 **FFmpeg License Notice**
 
 Debian builds FFmpeg with `--enable-gpl`, so the `ffmpeg` and `ffprobe` binaries in this image are licensed under the GNU General Public License version 2 or later (GPL-2.0-or-later). The pipeline runs them as separate processes over a command line and does not link against the FFmpeg libraries; the binaries are consumed unmodified from the Debian package. The GPL terms apply only when this optional pipeline (`app.pipelines.useGenAiVideoSopBom.enabled`) is enabled. Review the license requirements with your legal team before enabling it.
+
+### Miris Upload Pipeline
+
+**Miris Upload Pipeline Dependencies** (direct dependencies, as pinned by `container/requirements.lock`, which the image installs)
+
+| Name     | Version | License                                          | Notes                                                                   |
+| :------- | :------ | :----------------------------------------------- | :---------------------------------------------------------------------- |
+| usd-core | 25.11   | TOST-1.0 (Apache-2.0 with a different Section 6) | OpenUSD Python bindings for USD dependency discovery and USDZ packaging |
+| requests | 2.34.2  | Apache-2.0                                       | HTTPS client for the Miris API                                          |
+| boto3    | 1.35.99 | Apache-2.0                                       | AWS SDK for Python (Amazon S3, AWS Secrets Manager)                     |
+| botocore | 1.35.99 | Apache-2.0                                       | Low-level AWS service client library used by boto3                      |
+
+The lock also pins the packages these require (`certifi`, `charset-normalizer`, `idna`, `jmespath`, `python-dateutil`, `s3transfer`, `six`, and `urllib3`) by version and hash.
+
+**Container Base Image**
+
+The Miris Upload container uses the Debian-based `python:3.12-slim` Docker Official Image from the Amazon ECR Public Gallery, pinned by digest, and applies the Debian security updates published since the image was built.
+
+**Miris Spatial Streaming Service**
+
+The pipeline uploads USD assets to [Miris](https://miris.com/) Spatial Streaming, a commercial service on the public internet that requires a Miris account and is subject to the Miris terms of service. The pipeline is optional and runs only when `app.addons.useMirisStreaming.upload.enabled` is `true`.
 
 ### Gaussian Splat Toolbox Pipeline
 

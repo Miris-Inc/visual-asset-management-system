@@ -398,6 +398,22 @@ const COMMERCIAL: ConfigShape = {
                 clientId: "",
                 clientSecret: "",
             },
+            useMirisStreaming: {
+                enabled: false,
+                viewerKeyMode: "static",
+                viewerKey: "",
+                viewerKeyTtlMinutes: 15,
+                apiKeySecretArn: "",
+                mirisApiBaseUrl: "https://app.miris.com",
+                upload: {
+                    enabled: false,
+                    autoRegisterWithVAMS: true,
+                    autoRegisterAutoTriggerOnFileUpload: true,
+                    triggerExtensions: ".usd,.usda,.usdc,.usdz",
+                    taskTimeoutSeconds: 1800,
+                    maxAssetSizeBytes: 5000000000,
+                },
+            },
         },
         authProvider: {
             presignedUrlTimeoutSeconds: 86400,

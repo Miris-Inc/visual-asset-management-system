@@ -120,6 +120,7 @@ web/
       appCache.ts           # Replaces Amplify Cache for runtime config
       webRoutesCheck.ts     # Batched + cached web-route (Tier-1) checks
       addons/physnaAPIService.ts  # Add-on API calls (Physna viewer metadata)
+      addons/mirisAPIService.ts   # Add-on API calls (Miris stream status, viewer key, upload start)
 
     addons/                 # Add-on web lane (shipped empty): addonRoutes.tsx, addonNavigation.ts
     custom/                 # FORK EXTENSION POINT (shipped empty, never edited upstream)
@@ -196,7 +197,7 @@ web/
       README.md             # Plugin development docs
       config/
         viewerConfig.json   # Plugin configuration (core)
-        addonViewerConfig.json   # Add-on viewers (Physna; licensed VNTANA, VEERUM)
+        addonViewerConfig.json   # Add-on viewers (Physna, Miris Spatial Streaming; licensed VNTANA, VEERUM)
         customViewerConfig.json  # FORK EXTENSION POINT (shipped empty)
       core/
         PluginRegistry.ts   # Singleton registry (manages all viewers)
@@ -219,6 +220,7 @@ web/
         Online3dViewerPlugin/
         PDFViewerPlugin/
         PhysnaViewerPlugin/
+        MirisStreamViewerPlugin/     # Miris Spatial Streaming add-on viewer
         PlayCanvasGaussianSplatViewerPlugin/
         PotreeViewerPlugin/
         RoboticsDataViewerPlugin/    # MCAP / ROS bag / PX4 ULog viewer (framed Lichtblick app)
@@ -345,7 +347,7 @@ const response = await fetch(`/api/database/${databaseId}/assets`);
 -   `FileOperationsService.ts` — file operations
 -   `MetadataService.ts` — metadata CRUD
 -   `MetadataSchemaService.ts` — schema management
--   `addons/*.ts` — add-on API calls (`addons/physnaAPIService.ts` for the Physna viewer)
+-   `addons/*.ts` — add-on API calls (`addons/physnaAPIService.ts` for the Physna viewer, `addons/mirisAPIService.ts` for the Miris Spatial Streaming viewer)
 -   `features/orchestration/api/*.ts` — orchestration services (pipelines, workflows, executions, templates, triggers)
 -   `custom/services/*.ts` — the fork extension point for a fork's own API calls (shipped empty)
 
@@ -445,10 +447,14 @@ by the `'unsafe-inline'` keyword, never both -- when a hash source is present br
 safety net.
 
 Because of that, `generateContentSecurityPolicy()` adds `'unsafe-inline'` in **no** configuration,
-the Physna add-on included. The add-on's viewer frames Physna's own HTTPS origin rather than a
+the add-ons included. The Physna add-on's viewer frames Physna's own HTTPS origin rather than a
 `blob:` document, so that page loads under Physna's own CSP and its inline scripts are outside this
 policy's reach; the keyword would also be ignored on a VAMS page, because the hash sources are
-present. The add-on contributes `frame-src` and `connect-src` origins and no `script-src` source.
+present. The Physna add-on contributes `frame-src` and `connect-src` origins and no `script-src`
+source. An add-on may contribute `script-src` sources (`addonCspSources().scriptSrc` in
+`infra/lib/nestedStacks/addon/addonCsp.ts`), which `generateContentSecurityPolicy()` merges into
+`script-src`. The Miris Spatial Streaming add-on adds `blob:`, from which its SDK imports part of its
+engine.
 
 If a **new** viewer plugin needs inline script, hash that document's own inline blocks rather than
 moving `'unsafe-inline'` into `script-src` -- a hash source makes the keyword inert, so adding it
@@ -822,7 +828,7 @@ The route is automatically permission-filtered via `webRoutes()` API call. The b
 
 ### 7.5 Adding Pages in a Fork
 
-An add-on is optional, upstream-maintained code enabled by configuration: it either integrates VAMS with an external solution deployed and run separately (Garnet Framework, Physna), supplying the VAMS-side components, or is a stand-alone non-core component that VAMS deploys in full when enabled (the licensed VNTANA and VEERUM viewers). Custom is fork code, which upstream ships empty. Upstream adding an integration with an external solution uses the add-on lane; a fork uses the custom lane. Definition and current add-ons: `documentation/docusaurus-site/docs/developer/addons-overview.md`.
+An add-on is optional, upstream-maintained code enabled by configuration: it either integrates VAMS with an external solution deployed and run separately (Garnet Framework, Miris Spatial Streaming, Physna), supplying the VAMS-side components, or is a stand-alone non-core component that VAMS deploys in full when enabled (the licensed VNTANA and VEERUM viewers). Custom is fork code, which upstream ships empty. Upstream adding an integration with an external solution uses the add-on lane; a fork uses the custom lane. Definition and current add-ons: `documentation/docusaurus-site/docs/developer/addons-overview.md`.
 
 A fork adds pages without editing `routes.tsx` or `layout/Navigation.tsx`: both splice in fork-owned files under `src/custom/`, which upstream ships empty and never edits. The add-on lane sits between core and custom: `src/addons/addonRoutes.tsx` (`addonRouteTable`) and `src/addons/addonNavigation.ts` (`addonNavSections`), upstream-owned and shipped empty, hold an add-on's pages. The merge order is core, add-on, custom for both the route table and the side navigation (`src/addons/addonLanes.test.tsx`), so a path that repeats a core path never replaces the core page. The page goes in `src/custom/pages/`, its route in `customRouteTable` (`src/custom/customRoutes.tsx`, same `RouteOption` shape and `lazyWithRetry` rule), its side-navigation section in `customNavSections` (`src/custom/customNavigation.ts`), its API calls in `src/custom/services/`, and its feature-switch names in `src/custom/customFeatures.ts`. Custom routes and nav links pass through the same `checkWebRoutesAllowed` filter as core ones. Paths under `/custom/` are recommended, not enforced. Full walkthrough: `documentation/docusaurus-site/docs/developer/customizing-vams.md`.
 
@@ -835,7 +841,7 @@ A fork adds pages without editing `routes.tsx` or `layout/Navigation.tsx`: both 
 The 3D/media viewer system uses a plugin-based architecture:
 
 -   **PluginRegistry** (`src/visualizerPlugin/core/PluginRegistry.ts`) -- Singleton that manages all viewer plugins
--   **viewerConfig.json** (`src/visualizerPlugin/config/viewerConfig.json`) -- JSON configuration for the core plugins; add-on viewers (Physna and the licensed VNTANA and VEERUM viewers) are configured in `addonViewerConfig.json` and a fork's in `customViewerConfig.json` (fork extension point, shipped `{ "viewers": [] }`)
+-   **viewerConfig.json** (`src/visualizerPlugin/config/viewerConfig.json`) -- JSON configuration for the core plugins; add-on viewers (Physna, Miris Spatial Streaming and the licensed VNTANA and VEERUM viewers) are configured in `addonViewerConfig.json` and a fork's in `customViewerConfig.json` (fork extension point, shipped `{ "viewers": [] }`)
 -   **manifest.ts** (`src/visualizerPlugin/viewers/manifest.ts`) -- Vite static analysis paths for dynamic imports; `viewers/addonManifest.ts` and `viewers/custom/customManifest.ts` hold the add-on and fork entries
 -   **viewerSources.ts** (`src/visualizerPlugin/core/viewerSources.ts`) -- merges core, add-on and custom configs and manifests; a custom viewer whose `id` repeats a shipped one is skipped with a console error, and a shipped manifest key always wins
 -   **StylesheetManager** -- Per-plugin CSS lifecycle management
@@ -843,32 +849,35 @@ The 3D/media viewer system uses a plugin-based architecture:
 
 ### 8.2 Current Viewers (plugins)
 
-| ID                                 | Name                              | Category | Extensions                                                                                                                               | Status                                              |
-| ---------------------------------- | --------------------------------- | -------- | ---------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------- |
-| `online3d-viewer`                  | Online 3D Viewer                  | 3d       | .amf, .bim, .off, .wrl                                                                                                                   | enabled                                             |
-| `online3d-viewer-rhino`            | Online 3D Viewer (Rhinoceros 3D)  | 3d       | .3dm                                                                                                                                     | enabled (requires ALLOWUNSAFEEVAL)                  |
-| `potree-viewer`                    | Potree Viewer                     | 3d       | .e57, .las, .laz, .ply                                                                                                                   | enabled                                             |
-| `image-viewer`                     | Image Viewer                      | media    | .png, .jpg, .jpeg, .svg, .gif                                                                                                            | enabled                                             |
-| `html-viewer`                      | HTML Viewer                       | document | .html                                                                                                                                    | enabled                                             |
-| `video-viewer`                     | Video Player                      | media    | .mp4, .webm, .mov, .mkv, .m4v                                                                                                            | enabled                                             |
-| `audio-viewer`                     | Audio Player                      | media    | .mp3, .wav, .ogg, .aac, .flac, .m4a                                                                                                      | enabled                                             |
-| `columnar-viewer`                  | Columnar Data Viewer              | data     | .fcs, .csv                                                                                                                               | enabled                                             |
-| `pdf-viewer`                       | PDF Viewer                        | document | .pdf                                                                                                                                     | enabled                                             |
-| `cesium-viewer`                    | Cesium 3D Tileset                 | 3d       | .json                                                                                                                                    | enabled                                             |
-| `text-viewer`                      | Text Viewer                       | document | .txt, .json, .xml, .html, .yaml, .md, .py, .js, .ts, .sql, etc.                                                                          | enabled                                             |
-| `gaussian-splat-viewer-babylonjs`  | BabylonJS Gaussian Splat          | 3d       | .ply, .spz                                                                                                                               | enabled                                             |
-| `supersplat-viewer`                | SuperSplat Editor (PlayCanvas)    | 3d       | .lcc, .ply, .sog, .splat                                                                                                                 | enabled (requires ALLOWUNSAFEEVAL, iframe-embedded) |
-| `gaussian-splat-viewer-playcanvas` | PlayCanvas Gaussian Splat         | 3d       | .ply, .sog                                                                                                                               | enabled                                             |
-| `vntana-viewer`                    | VNTANA 3D Viewer                  | 3d       | .glb                                                                                                                                     | **disabled** (licensed add-on)                      |
-| `veerum-viewer`                    | VEERUM 3D Viewer                  | 3d       | .e57, .las, .laz, .ply, .json                                                                                                            | **disabled** (licensed add-on)                      |
-| `needletools-usd-viewer`           | Needle USD Viewer                 | 3d       | .usd, .usda, .usdc, .usdz                                                                                                                | enabled (requires ALLOWUNSAFEEVAL)                  |
-| `threejs-viewer`                   | Three.js Viewer                   | 3d       | .gltf, .glb, .obj, .fbx, .stl, .ply, .dae, .3ds, .3mf, .usd, .usda, .usdc, .usdz, .stp, .step, .iges, .igs, .brep                        | enabled                                             |
-| `physna-viewer`                    | Physna Viewer                     | 3d       | .3ds, .asm, .catpart, .catproduct, .glb, .iam, .iges, .igs, .ipt, .jt, .obj, .par, .prt, .sldasm, .sldprt, .stl, .step, .stp, .x_b, .x_t | enabled (requires PHYSNA_ADDON)                     |
-| `thatopenwebifc-viewer`            | ThatOpen IFC BIM Viewer           | 3d       | .ifc, .ifczip                                                                                                                            | enabled (requires ALLOWUNSAFEEVAL)                  |
-| `robotics-data-viewer`             | Robotics Data Viewer (Lichtblick) | data     | .mcap, .bag, .db3, .ulg, .ulog                                                                                                           | enabled (requires ALLOWUNSAFEEVAL, iframe-embedded) |
-| `preview-viewer`                   | Preview Viewer                    | preview  | \* (wildcard)                                                                                                                            | enabled                                             |
+| ID                                 | Name                              | Category | Extensions                                                                                                                               | Status                                                       |
+| ---------------------------------- | --------------------------------- | -------- | ---------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------ |
+| `online3d-viewer`                  | Online 3D Viewer                  | 3d       | .amf, .bim, .off, .wrl                                                                                                                   | enabled                                                      |
+| `online3d-viewer-rhino`            | Online 3D Viewer (Rhinoceros 3D)  | 3d       | .3dm                                                                                                                                     | enabled (requires ALLOWUNSAFEEVAL)                           |
+| `potree-viewer`                    | Potree Viewer                     | 3d       | .e57, .las, .laz, .ply                                                                                                                   | enabled                                                      |
+| `image-viewer`                     | Image Viewer                      | media    | .png, .jpg, .jpeg, .svg, .gif                                                                                                            | enabled                                                      |
+| `html-viewer`                      | HTML Viewer                       | document | .html                                                                                                                                    | enabled                                                      |
+| `video-viewer`                     | Video Player                      | media    | .mp4, .webm, .mov, .mkv, .m4v                                                                                                            | enabled                                                      |
+| `audio-viewer`                     | Audio Player                      | media    | .mp3, .wav, .ogg, .aac, .flac, .m4a                                                                                                      | enabled                                                      |
+| `columnar-viewer`                  | Columnar Data Viewer              | data     | .fcs, .csv                                                                                                                               | enabled                                                      |
+| `pdf-viewer`                       | PDF Viewer                        | document | .pdf                                                                                                                                     | enabled                                                      |
+| `cesium-viewer`                    | Cesium 3D Tileset                 | 3d       | .json                                                                                                                                    | enabled                                                      |
+| `text-viewer`                      | Text Viewer                       | document | .txt, .json, .xml, .html, .yaml, .md, .py, .js, .ts, .sql, etc.                                                                          | enabled                                                      |
+| `gaussian-splat-viewer-babylonjs`  | BabylonJS Gaussian Splat          | 3d       | .ply, .spz                                                                                                                               | enabled                                                      |
+| `supersplat-viewer`                | SuperSplat Editor (PlayCanvas)    | 3d       | .lcc, .ply, .sog, .splat                                                                                                                 | enabled (requires ALLOWUNSAFEEVAL, iframe-embedded)          |
+| `gaussian-splat-viewer-playcanvas` | PlayCanvas Gaussian Splat         | 3d       | .ply, .sog                                                                                                                               | enabled                                                      |
+| `vntana-viewer`                    | VNTANA 3D Viewer                  | 3d       | .glb                                                                                                                                     | **disabled** (licensed add-on)                               |
+| `veerum-viewer`                    | VEERUM 3D Viewer                  | 3d       | .e57, .las, .laz, .ply, .json                                                                                                            | **disabled** (licensed add-on)                               |
+| `needletools-usd-viewer`           | Needle USD Viewer                 | 3d       | .usd, .usda, .usdc, .usdz                                                                                                                | enabled (requires ALLOWUNSAFEEVAL)                           |
+| `threejs-viewer`                   | Three.js Viewer                   | 3d       | .gltf, .glb, .obj, .fbx, .stl, .ply, .dae, .3ds, .3mf, .usd, .usda, .usdc, .usdz, .stp, .step, .iges, .igs, .brep                        | enabled                                                      |
+| `physna-viewer`                    | Physna Viewer                     | 3d       | .3ds, .asm, .catpart, .catproduct, .glb, .iam, .iges, .igs, .ipt, .jt, .obj, .par, .prt, .sldasm, .sldprt, .stl, .step, .stp, .x_b, .x_t | enabled (requires PHYSNA_ADDON)                              |
+| `miris-stream-viewer`              | Miris Spatial Streaming           | 3d       | .usd, .usda, .usdc, .usdz                                                                                                                | **disabled** (add-on; requires MIRIS_ADDON, ALLOWUNSAFEEVAL) |
+| `thatopenwebifc-viewer`            | ThatOpen IFC BIM Viewer           | 3d       | .ifc, .ifczip                                                                                                                            | enabled (requires ALLOWUNSAFEEVAL)                           |
+| `robotics-data-viewer`             | Robotics Data Viewer (Lichtblick) | data     | .mcap, .bag, .db3, .ulg, .ulog                                                                                                           | enabled (requires ALLOWUNSAFEEVAL, iframe-embedded)          |
+| `preview-viewer`                   | Preview Viewer                    | preview  | \* (wildcard)                                                                                                                            | enabled                                                      |
 
 > Note: `supersplat-viewer` is a **iframe-embedded** viewer — it self-hosts a from-source SuperSplat build under `public/viewers/supersplat/` and loads files via a presigned URL `?load=` parameter (see 8.5 before copying that pattern). The build is WebGPU-only (no WebGL2 fallback). Under the production CSP its `<base>` element, inline script, and embedded `pc-icon` data-URI font are blocked without breaking the editor.
+
+> Note: `miris-stream-viewer` (Miris Spatial Streaming add-on) streams the Miris asset recorded in a USD file's `miris_*` metadata. It asks `GET /addon/miris/asset-status` for the file's state, and only for a streamable file gets a viewer key from `POST /addon/miris/viewer-key` (in both viewer key modes, held in memory for that open) and then imports the Miris SDK bundle from `/viewers/miris/miris-sdk.js`, bounded at 60 s; its entry has no `dependencyManagerMethod`, so the registry never loads the SDK up front. `autoSelect` opens it ahead of the Needle USD viewer, which its "not yet streamed" guidance names. That guidance also offers a **Stream with Miris** button, gated on the `MIRIS_UPLOAD` feature switch (`appCache` config `featuresEnabled`, read only in that state; published when the add-on deploys its upload pipeline), `can("POST", "/workflows/{workflowDatabaseId}/{workflowId}/execute")` and the USD extensions: `startMirisUpload` (`services/addons/mirisAPIService.ts`) runs the GLOBAL `miris-upload` workflow on the file's asset-relative path (the status response's `filePath`) as a manual run with no template, so the pipeline's default template applies, and the viewer then polls the status every 90 s until the file records a stream. Before offering it, when the user may also call `GET /database/{databaseId}/assets/{assetId}/workflows/executions`, `findRunningMirisUpload` lists the asset's `miris-upload` executions (server-side `workflowId` and `workflowDatabaseId` filters, following `NextToken`), and an unfinished run replaces the button with an in-progress notice and a **View execution** link, re-checked with the status every 90 s; a failed lookup offers the button. Like the licensed viewers, its entry ships disabled: `web/customInstalls/miris/mirisInstall.js` installs the exactly pinned `@miris-inc/*` packages and `three` (within the SDK's peer range `>=0.182.0 <0.186.0`, so upgrade them together in `customInstalls/miris/package.json`), bundles them with webpack into an ES module, and copies it with the SDK's `.wasm` files to `public/viewers/miris/` only when the entry is enabled. The bundle keeps `import.meta.url` for the browser, so each chunk finds its `.wasm` files beside it.
 
 > Note: `robotics-data-viewer` is an **iframe-embedded** viewer — `web/customInstalls/robotics/roboticsViewerInstall.js` builds the Lichtblick web app (MPL-2.0, pinned tag and commit) from source with the VAMS overlay in `web/customInstalls/robotics/overlay/` into `public/viewers/robotics/`. The host component presigns each file under its own asset and hands the URLs over in the iframe's URL **fragment** (see 8.5). `.mcap` (several files on one timeline) and `.bag` are read with HTTP Range requests; `.db3` (one file or a ROS 2 split bag) and `.ulg`/`.ulog` are downloaded whole, limited to `customParameters.maxWholeFileBytes` (1 GiB) across the selection. No Lichtblick extension can be installed or loaded: an extension is code run in the framed document, which is same-origin with VAMS, so the overlay entrypoint renders upstream `SharedRoot` with an empty extension loader list instead of upstream `WebRoot` (which always adds IndexedDB loaders). The install's build check and `roboticsBuild.test.ts` fail if that changes. User Scripts stay available (they run in a web worker).
 
@@ -950,7 +959,7 @@ export const VIEWER_COMPONENTS = {
 
 **Step 5:** If the viewer has external dependencies, create a custom install script in `web/customInstalls/myviewer/` and add it to the `postinstall` chain in `package.json`.
 
-**Add-on and fork viewers.** (Add-on as defined in `documentation/docusaurus-site/docs/developer/addons-overview.md`.) An add-on's viewer, and a licensed viewer that ships disabled (VNTANA, VEERUM), is registered in `config/addonViewerConfig.json` + `viewers/addonManifest.ts`, never in the core files; its plugin directory stays under `viewers/`. To enable a licensed viewer, set `"enabled": true` on its entry in `config/addonViewerConfig.json`; its install script (`web/customInstalls/vntana/`, `web/customInstalls/veerum/`, unchanged in `postinstall`) checks the core, add-on and custom config files through `web/customInstalls/utility/checkViewerEnabled.js`. A fork's viewer lives in `viewers/custom/<Name>Plugin/` and is registered in `config/customViewerConfig.json` + `viewers/custom/customManifest.ts` (fork extension point, shipped empty); its install steps go in `web/customInstalls/custom/customInstall.js`, which `postinstall` already runs. `core/viewerSources.ts` merges core, add-on and custom in that order, so a priority tie between a core and an add-on viewer resolves to the core one; a custom entry whose `id` repeats a shipped `id` is skipped with a console error and a shipped manifest key always wins. Ids prefixed `custom-` are recommended, not enforced.
+**Add-on and fork viewers.** (Add-on as defined in `documentation/docusaurus-site/docs/developer/addons-overview.md`.) An add-on's viewer, and a licensed viewer that ships disabled (VNTANA, VEERUM), is registered in `config/addonViewerConfig.json` + `viewers/addonManifest.ts`, never in the core files; its plugin directory stays under `viewers/`. To enable a licensed viewer or the Miris Spatial Streaming viewer, set `"enabled": true` on its entry in `config/addonViewerConfig.json`; its install script (`web/customInstalls/vntana/`, `web/customInstalls/veerum/`, `web/customInstalls/miris/`, all in `postinstall`) checks the core, add-on and custom config files through `web/customInstalls/utility/checkViewerEnabled.js`. A fork's viewer lives in `viewers/custom/<Name>Plugin/` and is registered in `config/customViewerConfig.json` + `viewers/custom/customManifest.ts` (fork extension point, shipped empty); its install steps go in `web/customInstalls/custom/customInstall.js`, which `postinstall` already runs. `core/viewerSources.ts` merges core, add-on and custom in that order, so a priority tie between a core and an add-on viewer resolves to the core one; a custom entry whose `id` repeats a shipped `id` is skipped with a console error and a shipped manifest key always wins. Ids prefixed `custom-` are recommended, not enforced.
 
 ### 8.4 Plugin Config Fields
 
@@ -966,6 +975,7 @@ export const VIEWER_COMPONENTS = {
 | `supportsMultiFile`          | boolean           | Can handle multiple files at once                    |
 | `canFullscreen`              | boolean           | Supports fullscreen mode                             |
 | `priority`                   | number            | Lower = listed first when multiple viewers match     |
+| `autoSelect`                 | boolean?          | Auto-open as the sole top-priority match (visualize) |
 | `loadStrategy`               | "lazy" \| "eager" | Not read; every viewer loads on first use            |
 | `category`                   | string            | Viewer category (3d, media, document, data, preview) |
 | `featuresEnabledRestriction` | string[]?         | Required feature flags                               |
@@ -1226,7 +1236,7 @@ Known feature flags:
 
 -   `LOCATIONSERVICES` -- Map/geospatial features
 -   `NOOPENSEARCH` -- Disable OpenSearch-dependent features
--   `ALLOWUNSAFEEVAL` -- Required for Needle USD, SuperSplat Editor, ThatOpen IFC BIM, Robotics Data Viewer, Online 3D Viewer .3dm files, and Three.js CAD formats (WASM loaders use eval). The Three.js viewer opens USD (.usd/.usda/.usdc/.usdz) without it; with it, Needle and Three.js both match USD and the user picks.
+-   `ALLOWUNSAFEEVAL` -- Required for Needle USD, SuperSplat Editor, ThatOpen IFC BIM, Robotics Data Viewer, Online 3D Viewer .3dm files, Miris Spatial Streaming (add-on, also requires `MIRIS_ADDON`), and Three.js CAD formats (WASM loaders use eval). The Three.js viewer opens USD (.usd/.usda/.usdc/.usdz) without it; with it, Needle and Three.js both match USD and the user picks.
 -   Three.js referenced files (textures, `.mtl`, USD layers) are fetched only through `ThreeJSViewerPlugin/utils/assetDependencyResolver.ts` (path rules, limits, URL modifier with placeholder); see "Three.js Referenced Files" in `web/src/visualizerPlugin/CLAUDE.md`.
 -   Additional flags may exist in deployed configurations
 
@@ -1572,6 +1582,8 @@ Match the comment density and style already present in the file. Describe **what
 | `sanitize-html`                 | ^2.11.0              | HTML sanitization                    |
 | `@dnd-kit/core`                 | ^6.3.1               | Drag and drop                        |
 | `@testing-library/react`        | 14                   | Testing utilities (upgraded from 11) |
+
+The Miris Spatial Streaming SDK (`@miris-inc/components`, `@miris-inc/core`, `@miris-inc/three`) and the `three` it renders with are not web dependencies either. Like the VNTANA and VEERUM packages, they are installed by `customInstalls/miris/mirisInstall.js` only when the `miris-stream-viewer` entry in `addonViewerConfig.json` is enabled (it ships disabled), bundled with webpack into an ES module under `public/viewers/miris/`, and imported at runtime by `MirisStreamViewerPlugin/dependencies.ts`. Their exact pins live in `customInstalls/miris/package.json`: the `@miris-inc/*` packages share one version and are upgraded together with `three`, which must stay inside the SDK's peer range (`>=0.182.0 <0.186.0`).
 
 ### 14.1 Key Service Files
 

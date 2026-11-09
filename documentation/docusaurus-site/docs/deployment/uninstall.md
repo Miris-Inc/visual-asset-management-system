@@ -146,7 +146,7 @@ aws cloudformation delete-stack \
 Then manually delete the retained resources using the steps in Step 2 through Step 11.
 
 :::note[Amazon SQS queues are deleted with the stack]
-Every VAMS Amazon SQS queue uses a `DESTROY` removal policy, so none of the steps below covers one. That includes every source queue — the file and asset indexer queues, both bucket-sync queues per registered bucket, the large file processing queue, the workflow trigger dispatch queue, the Garnet queues, and the two Physna sync queues when Physna sync is enabled — and the dead-letter queue each one redrives to. The dead-letter queues are auto-named by AWS CloudFormation and never conflict with a redeploy; the bucket sync, indexer, Physna sync, and Garnet queues carry explicit names of the form `<configuration name>-<app.baseStackName>-<region>-<purpose>`, and the large file processing queue one of the form `<configuration name>-<env.coreStackName>-sqsUploadLargeFile-queue`. If a teardown fails partway, delete any queue left behind before redeploying with the same configuration name and the same `app.baseStackName` into the same account and Region.
+Every VAMS Amazon SQS queue uses a `DESTROY` removal policy, so none of the steps below covers one. That includes every source queue — the file and asset indexer queues, both bucket-sync queues per registered bucket, the large file processing queue, the workflow trigger dispatch queue, the Garnet queues, and the two Physna sync queues when Physna sync is enabled — and the dead-letter queue each one redrives to, as well as the Miris viewer key cleanup dead-letter queue in the Miris add-on's `perView` mode. The dead-letter queues are auto-named by AWS CloudFormation and never conflict with a redeploy; the bucket sync, indexer, Physna sync, and Garnet queues carry explicit names of the form `<configuration name>-<app.baseStackName>-<region>-<purpose>`, and the large file processing queue one of the form `<configuration name>-<env.coreStackName>-sqsUploadLargeFile-queue`. If a teardown fails partway, delete any queue left behind before redeploying with the same configuration name and the same `app.baseStackName` into the same account and Region.
 
 Check the indexer dead-letter queues before deleting them. They hold the asset and file records the indexer could not add to the search index, and a redeploy does not replay them — run a reindex to rebuild the index for the affected assets and files.
 
@@ -253,6 +253,10 @@ for TABLE in $(aws dynamodb list-tables \
 done
 ```
 
+:::note[Miris viewer keys and assets]
+In the Miris Spatial Streaming add-on's `perView` mode, the retained `MirisViewerKeyStorageTable` lists the per-view viewer keys VAMS minted. Its cleanup Lambda function is deleted with the stack, so keys whose rows TTL had not yet removed stay in the Miris workspace after teardown; they have already expired or expire within `viewerKeyTtlMinutes`. Delete them in the Miris Portal or with `miris viewerkey delete` if the workspace should not keep them. The Miris assets the upload pipeline created, the deployment's static viewer key, and the Integration Key secret named in `apiKeySecretArn` are not VAMS resources and are not removed by uninstalling VAMS. The GLOBAL **Miris stream** metadata schema record is stored in the metadata schema table, so deleting that table removes it.
+:::
+
 ## Step 4: Delete Amazon CloudWatch log groups
 
 VAMS creates Lambda function log groups and explicitly named log groups under `/aws/vendedlogs/` that may persist after stack deletion. The named log groups (audit, REST API access, workflow, orchestration bus, VPC flow logs, AWS CloudTrail, and per-pipeline state machine and container groups) use deterministic names derived from the stack name and account ID. If any are left behind, they will conflict with the same-named groups on a subsequent redeploy using the same configuration name and account, so delete them before redeploying.
@@ -266,7 +270,7 @@ The key named log groups are:
 -   `/aws/vendedlogs/VAMSCloudTrailLogs-{hash}` — AWS CloudTrail logs (conditional on `addStackCloudTrailLogs`)
 -   `aws-waf-logs-vams-{hash}` — AWS WAF request logs, one per web ACL (conditional on `useWaf`). Outside the `/aws/vendedlogs/` namespace because AWS WAF requires the `aws-waf-logs-` prefix, and the CloudFront ACL's group is in us-east-1 rather than the deployment Region
 -   `/aws/vendedlogs/VAMSstateMachine-*-{hash}` — Per-pipeline state machine logs
--   `/aws/vendedlogs/Pipelines/*` — Per-pipeline container logs. The AWS Fargate job groups are `CoordTransform{hash}`, `Metadata3dLabelingBlenderRenderer{hash}`, `Preview3dThumbnail{hash}`, `PcPotreeViewerPDAL{hash}`, `PcPotreeViewerPotree{hash}`, `VideoSopBom{hash}` and `CadStepAgent{hash}` (conditional on the matching pipeline flag; `CadStepAgent{hash}` on the GenAI CAD STEP agent's `fargate` runtime only); the RapidPipeline and ModelOps groups are named for their container
+-   `/aws/vendedlogs/Pipelines/*` — Per-pipeline container logs. The AWS Fargate job groups are `CoordTransform{hash}`, `Metadata3dLabelingBlenderRenderer{hash}`, `Preview3dThumbnail{hash}`, `PcPotreeViewerPDAL{hash}`, `PcPotreeViewerPotree{hash}`, `VideoSopBom{hash}`, `CadStepAgent{hash}` and `MirisUpload{hash}` (conditional on the matching pipeline flag; `CadStepAgent{hash}` on the GenAI CAD STEP agent's `fargate` runtime only, and `MirisUpload{hash}` on the Miris add-on's `upload.enabled`); the RapidPipeline and ModelOps groups are named for their container
 
 The `/aws/codebuild/` build log groups of pipelines configured with `useCodeBuild: true` are not named by VAMS; the last command block below finds and deletes them.
 

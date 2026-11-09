@@ -115,6 +115,7 @@ const sidebars: SidebarsConfig = {
                         "developer/addons-overview",
                         "developer/garnet-framework",
                         "developer/physna-integration",
+                        "developer/miris-spatial-streaming",
                     ],
                 },
                 {
@@ -132,6 +133,7 @@ const sidebars: SidebarsConfig = {
                         "pipelines/gaussian-splatting",
                         "pipelines/genai-labeling",
                         "pipelines/video-sop-bom",
+                        "pipelines/miris-upload",
                         "pipelines/nvidia-isaac-lab",
                         "pipelines/nvidia-cosmos-predict",
                         "pipelines/nvidia-cosmos-reason",

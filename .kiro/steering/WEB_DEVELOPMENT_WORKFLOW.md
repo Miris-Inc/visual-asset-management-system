@@ -74,7 +74,7 @@ web/
       FileOperationsService.ts
       MetadataService.ts
       MetadataSchemaService.ts
-      addons/               # Add-on API calls (physnaAPIService.ts)
+      addons/               # Add-on API calls (physnaAPIService.ts, mirisAPIService.ts)
 
     addons/                 # Add-on web lane (shipped empty): addonRoutes.tsx, addonNavigation.ts
                             #   — see WEB_FRONTEND.md 7.5
@@ -492,7 +492,7 @@ Omit `--ts` for a readable per-block listing.
 
 **A hash and `'unsafe-inline'` are mutually exclusive.** A CSP may allow inline script by hash **or** by the `'unsafe-inline'` keyword, never both -- when a hash source is present, browsers ignore `'unsafe-inline'` entirely. The two are not additive, so `'unsafe-inline'` cannot be kept as a fallback.
 
-For that reason `generateContentSecurityPolicy()` emits `'unsafe-inline'` in **no** configuration, the Physna add-on included. The add-on's viewer frames Physna's own HTTPS origin rather than a `blob:` document, so that page loads under Physna's own CSP and its inline scripts are outside this policy's reach; the keyword would also be ignored on a VAMS page, because the hash sources are present. The add-on contributes `frame-src` and `connect-src` origins and no `script-src` source.
+For that reason `generateContentSecurityPolicy()` emits `'unsafe-inline'` in **no** configuration, the add-ons included. The Physna add-on's viewer frames Physna's own HTTPS origin rather than a `blob:` document, so that page loads under Physna's own CSP and its inline scripts are outside this policy's reach; the keyword would also be ignored on a VAMS page, because the hash sources are present. The Physna add-on contributes `frame-src` and `connect-src` origins and no `script-src` source. An add-on may contribute `script-src` sources (`addonCspSources().scriptSrc` in `infra/lib/nestedStacks/addon/addonCsp.ts`), which `generateContentSecurityPolicy()` merges into `script-src`. The Miris Spatial Streaming add-on adds `blob:`, from which its SDK imports part of its engine.
 
 If a **new** viewer plugin needs inline script, hash that document's own inline blocks rather than returning `'unsafe-inline'` to `script-src` -- a hash source makes the keyword inert, so adding it would relax nothing and remove the protection the hashes give every other page.
 

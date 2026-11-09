@@ -540,6 +540,16 @@ Tags and tag types are database-namespaced. The partition key is the `databaseId
 | AppFeatureEnabledStorageTable | `featureName` | --                                                   |
 | S3AssetBucketsStorageTable    | `bucketId`    | `bucketName:baseAssetsPrefix` (GSI: `bucketNameGSI`) |
 
+### Miris Viewer Key Storage Table (add-on)
+
+Created only by the Miris Spatial Streaming add-on in `perView` mode. One row per viewer key the viewer key route mints; the key material itself is never stored.
+
+| Attribute          | Type   | Key           |
+| ------------------ | ------ | ------------- |
+| `mirisViewerKeyId` | String | Partition Key |
+
+Each row carries `databaseId`, `assetId`, `filePath` (asset-relative), `userId`, `mirisAssetUuid`, `createdAt` and `expiresAt` (RFC 3339 UTC), and `ttl`, the key's expiry plus one hour in epoch seconds. A row is written with a condition that no row with the same key ID exists. The table has no index. Its `KEYS_ONLY` stream feeds the cleanup Lambda function, which acts only on `REMOVE` records written by DynamoDB TTL and deletes the named key from Miris.
+
 ## Amazon S3 Bucket Organization
 
 ### Asset Buckets
@@ -582,6 +592,14 @@ by the input file that the data was derived from and one keyed by the execution 
 {databaseId}/{assetFileKey}/preview/{viewer_subfolder}/{generated_files}
 pipelines/{pipelineName}/{executionId}/{working_files}
 ```
+
+The Miris Upload pipeline also keeps its duplicate-upload claims at the bucket root, one object per asset and USD content fingerprint, under the asset's database because an asset ID is unique only within its database:
+
+```
+locks/miris-upload/{databaseId}/{assetId}/{fingerprint}.claim
+```
+
+The fingerprint is a SHA-256 digest of the asset-relative key and ETag of every file under the asset root with a trigger extension. The claim is created with a conditional put (`If-None-Match: *`) and records a digest of the owning execution's workflow task token. A run that does not succeed deletes its claim; a successful run keeps its claim and deletes the asset's other claims. See [Miris Upload](../pipelines/miris-upload.md#duplicate-uploads-and-re-runs).
 
 Where:
 

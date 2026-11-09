@@ -30,10 +30,9 @@
 
 import * as fs from "fs";
 import * as path from "path";
+import { PIPELINE_SOURCE_DIRS } from "../support/addonPipelines";
 import { Resource, SynthResult, synthTemplate } from "../support/templateSynth";
 import { IMAGE_TAG_LENGTH, MAX_IMAGE_REFERENCE_LENGTH } from "../../lib/helper/containerImageTag";
-
-const PIPELINES_DIR = path.join(__dirname, "..", "..", "lib", "nestedStacks", "pipelines");
 
 /** Enable exactly one pipeline, so an unrelated one cannot supply the resources being asserted. */
 function onlyPipeline(flag: string) {
@@ -288,7 +287,7 @@ function codeLines(file: string): string[] {
 }
 
 describe("every pipeline CodeBuild construct supplies IMAGE_TAG", () => {
-    const files = typescriptFiles(PIPELINES_DIR);
+    const files = PIPELINE_SOURCE_DIRS.flatMap((dir) => typescriptFiles(dir));
     const builders = files.filter((f) => codeLines(f).some((l) => /ECR_REPO_URI:/.test(l)));
 
     it("[control] finds the CodeBuild constructs to scan", () => {

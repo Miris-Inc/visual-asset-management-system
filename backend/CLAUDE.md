@@ -38,9 +38,11 @@ backend/
 │   │   │                                           #   (core + ADDON_ROUTES + CUSTOM_ROUTES).
 │   │   │                                           #   Handlers dispatch via ApiRoute.matches().
 │   │   ├── apiRouteTypes.py                        # ApiRoute + GET/POST/... (re-exported by apiRoutes.py)
-│   │   ├── addonApiRoutes.py                       # Add-on routes (Physna viewer) → ADDON_ROUTES
+│   │   ├── addonApiRoutes.py                       # Add-on routes (Physna viewer, Miris stream status +
+│   │   │                                           #   viewer key) → ADDON_ROUTES
 │   │   ├── addonConstants.py                       # Add-on object types, constraint fields, blocklist entries
-│   │   ├── addonResourceNames.py                   # AddonResourceKeys (mirrors infra/common/addonResourceParamKeys.ts)
+│   │   ├── addonResourceNames.py                   # AddonResourceKeys (mirrors infra/common/addonResourceParamKeys.ts;
+│   │   │                                           #   MIRIS_VIEWER_KEY_STORAGE_TABLE)
 │   │   ├── constants.py                            # ABAC policy, allowed values, file blocklists:
 │   │   │                                           #   CORE_* lists merged with the add-on + custom lanes
 │   │   ├── dynamodb.py                             # query_all_items, query_has_match, batch_get_items,
@@ -95,6 +97,8 @@ backend/
 │   │   │                                           #   registerPipelineExecution, workflowTriggerDispatch,
 │   │   │                                           #   deadlineCloudJobCallback
 │   │   ├── addon/garnetFramework/                  # Garnet NGSI-LD indexer Lambdas
+│   │   ├── addon/miris/                            # Miris Spatial Streaming: getAssetStatus, mintViewerKey,
+│   │   │                                           #   viewerKeyCleanup (mirisIntegration.py, streamMetadata.py shared)
 │   │   ├── addon/physna/                           # Physna Sync Lambdas (physnaCommon.py shared)
 │   │   ├── custom/                                 # FORK EXTENSION POINT: fork handlers (handlers.custom.<name>)
 │   │   └── assetLinks, comments, config, databases, indexing, metadata,
@@ -102,7 +106,7 @@ backend/
 │   │       tagTypes, userRoles                     # Domain handlers (folder per domain)
 │   └── models/                                     # Pydantic v1 models, one file per domain
 │       ├── assetsV3.py                             # GOLD STANDARD model file
-│       ├── addon/                                  # Add-on models (physnaViewer.py)
+│       ├── addon/                                  # Add-on models (physnaViewer.py, miris.py)
 │       ├── common.py                               # Response helpers, APIGatewayProxyResponseV2
 │       ├── custom/                                 # FORK EXTENSION POINT: fork models
 │       └── apiKeys, pipelines, workflows, executions, assetHistory, [domain].py
@@ -1047,11 +1051,12 @@ endpoints writes only here and merges upstream releases without conflicts. Each 
 | Models                                             | `models/custom/<name>.py`                                             | imported by the fork's handlers                     |
 | Object types, constraint fields, deny-list entries | `custom/customConstants.py`                                           | `common/constants.py` (merged at import)            |
 
-An add-on is optional, upstream-maintained code enabled by configuration: it either integrates VAMS with an external solution deployed and run separately (Garnet Framework, Physna), supplying the VAMS-side components, or is a stand-alone non-core component that VAMS deploys in full when enabled (the licensed VNTANA and VEERUM viewers). Custom is fork code, which upstream ships empty. Upstream adding an integration with an external solution uses the add-on lane; a fork uses the custom lane. Definition and current add-ons: `documentation/docusaurus-site/docs/developer/addons-overview.md`.
+An add-on is optional, upstream-maintained code enabled by configuration: it either integrates VAMS with an external solution deployed and run separately (Garnet Framework, Miris Spatial Streaming, Physna), supplying the VAMS-side components, or is a stand-alone non-core component that VAMS deploys in full when enabled (the licensed VNTANA and VEERUM viewers). Custom is fork code, which upstream ships empty. Upstream adding an integration with an external solution uses the add-on lane; a fork uses the custom lane. Definition and current add-ons: `documentation/docusaurus-site/docs/developer/addons-overview.md`.
 
 The add-on lane sits beside each core list and is upstream-owned: `common/addonApiRoutes.py`,
 `common/addonResourceNames.py` (`AddonResourceKeys`), `common/addonConstants.py`, `handlers/addon/`
-and `models/addon/` (the Physna viewer model). Every list merges in the order core, add-on, custom.
+and `models/addon/` (the Physna viewer and Miris Spatial Streaming models). Every list merges in the
+order core, add-on, custom.
 
 -   Fork handlers follow every rule above, including both Casbin tiers with the fail-closed
     pre-set flag (Rule 4) and dispatch on the `ApiRoute` constants from `custom/customApiRoutes.py`

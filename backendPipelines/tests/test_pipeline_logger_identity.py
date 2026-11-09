@@ -33,6 +33,7 @@ _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__f
 LOGGER_COPIES = (
     "backendPipelines/3dRecon/splatToolbox/lambda/customLogging/logger.py",
     "backendPipelines/conversion/coordinateTransform/lambda/customLogging/logger.py",
+    "backendPipelines/conversion/mirisUpload/lambda/customLogging/logger.py",
     "backendPipelines/genAi/cadStepAgent/lambda/customLogging/logger.py",
     "backendPipelines/genAi/imageTo3d/lambda/customLogging/logger.py",
     "backendPipelines/genAi/metadata3dLabeling/lambda/customLogging/logger.py",

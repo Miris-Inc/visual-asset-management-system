@@ -253,6 +253,83 @@ function isValidUrl(value: unknown): boolean {
     }
 }
 
+/**
+ * True when an endpoint's host is loopback, link-local, or private (config.ts:
+ * `validateOutboundHttpsEndpoint`). False for an unparseable URL, which a parseability rule reports.
+ */
+function isPrivateEndpointHost(endpoint: string): boolean {
+    let host: string;
+    try {
+        host = new URL(endpoint).hostname.toLowerCase().replace(/^\[|\]$/g, "");
+    } catch {
+        return false;
+    }
+    return (
+        host === "localhost" ||
+        host.endsWith(".localhost") ||
+        host.endsWith(".local") ||
+        host.endsWith(".internal") ||
+        host === "::1" ||
+        /^127\./.test(host) ||
+        /^169\.254\./.test(host) ||
+        /^10\./.test(host) ||
+        /^192\.168\./.test(host) ||
+        /^172\.(1[6-9]|2\d|3[01])\./.test(host) ||
+        /^(fc|fd)[0-9a-f]{2}:/.test(host)
+    );
+}
+
+/** Viewer key modes accepted by `app.addons.useMirisStreaming.viewerKeyMode` (config.ts: `MIRIS_VIEWER_KEY_MODES`). */
+const MIRIS_VIEWER_KEY_MODES = ["static", "perView"];
+
+/** Shortest value accepted as `app.addons.useMirisStreaming.viewerKey` (config.ts: `MIRIS_VIEWER_KEY_MIN_LENGTH`). */
+const MIRIS_VIEWER_KEY_MIN_LENGTH = 16;
+
+/**
+ * A complete commercial-partition Secrets Manager secret ARN, suffix included (config.ts:
+ * `MIRIS_SECRET_ARN_PATTERN`).
+ */
+const MIRIS_SECRET_ARN_PATTERN =
+    /^arn:aws:secretsmanager:[a-z0-9-]+:\d{12}:secret:[A-Za-z0-9/_+=.@-]+-[A-Za-z0-9]{6}$/;
+
+/**
+ * File extensions the GLOBAL "Miris stream" file metadata schema accepts (config.ts:
+ * `MIRIS_STREAM_SCHEMA_EXTENSIONS`).
+ */
+export const MIRIS_STREAM_SCHEMA_EXTENSIONS = [".usd", ".usda", ".usdc", ".usdz"];
+
+/** config.ts `parseMirisTriggerExtensions`: the extensions, or undefined when malformed. */
+function parseMirisTriggerExtensions(value: unknown): string[] | undefined {
+    if (typeof value !== "string") return undefined;
+    const extensions = value.split(",");
+    return extensions.every((extension) => /^\.[a-z0-9]+$/.test(extension))
+        ? extensions
+        : undefined;
+}
+
+/** A string value with leading or trailing whitespace (config.ts: the `!== ....trim()` checks). */
+function hasSurroundingWhitespace(value: unknown): boolean {
+    return typeof value === "string" && value !== value.trim();
+}
+
+/** A string value containing whitespace anywhere (config.ts: the triggerExtensions `/\s/` check). */
+function containsWhitespace(value: unknown): boolean {
+    return typeof value === "string" && /\s/.test(value);
+}
+
+/** config.ts `isPositiveInteger`. */
+function isPositiveInteger(value: unknown): boolean {
+    return typeof value === "number" && Number.isInteger(value) && value > 0;
+}
+
+/** The Miris add-on is enabled in static viewer key mode. An absent mode is filled with "static". */
+function mirisStatic(cfg: ConfigShape): boolean {
+    const mode = g(cfg, "app.addons.useMirisStreaming.viewerKeyMode");
+    return (
+        !!g(cfg, "app.addons.useMirisStreaming.enabled") && (isAbsent(mode) || mode === "static")
+    );
+}
+
 /** Physna credentials supplied via an operator-managed secret ARN (config.ts: `hasSecretArn`). */
 function physnaHasSecretArn(cfg: ConfigShape): boolean {
     return !isUnset(g(cfg, "app.addons.usePhysnaSync.credentialsSecretArn"));
@@ -461,7 +538,8 @@ function usesPrivateSubnetPipeline(cfg: ConfigShape): boolean {
         !!g(cfg, "app.pipelines.useIsaacLabTraining.enabled") ||
         !!g(cfg, "app.pipelines.useNvidiaCosmos.enabled") ||
         !!g(cfg, "app.pipelines.useNvidiaCosmos3.enabled") ||
-        !!g(cfg, "app.pipelines.useNvidiaGr00t.enabled")
+        !!g(cfg, "app.pipelines.useNvidiaGr00t.enabled") ||
+        !!g(cfg, "app.addons.useMirisStreaming.upload.enabled")
     );
 }
 
@@ -763,6 +841,12 @@ const VPC_REQUIRING_FEATURES: {
         fieldPaths: ["app.pipelines.useGenAiCadStepAgent.enabled"],
         appliesWhen: (c) => !!g(c, "app.pipelines.useGenAiCadStepAgent.enabled"),
     },
+    {
+        id: "vpc-required-miris-upload",
+        label: "addons.useMirisStreaming.upload",
+        fieldPaths: ["app.addons.useMirisStreaming.upload.enabled"],
+        appliesWhen: (c) => !!g(c, "app.addons.useMirisStreaming.upload.enabled"),
+    },
 ];
 
 /** Partitions whose capability downgrades are gated on app.govCloud.enabled (config.ts: `restrictedPartitionRequiringFlag`). */
@@ -936,21 +1020,24 @@ export const RULES: Rule[] = [
     //
     // The trigger is created by the registration custom resource, which exists only when
     // autoRegisterWithVAMS is true, so an armed trigger on an unregistered pipeline is discarded
-    // silently. One rule per pipeline, over the same five config.ts iterates, so the marker lands on
+    // silently. One rule per pipeline, over the same blocks config.ts iterates, so the marker lands on
     // the pipeline whose two adjacent toggles disagree.
     ...(
         [
-            "useConversionCadMeshMetadataExtraction",
-            "useConversionCoordinateTransform",
-            "useGenAiCadStepAgent",
-            "usePreviewPcPotreeViewer",
-            "usePreview3dThumbnail",
-            "useGenAiMetadata3dLabeling",
+            "pipelines.useConversionCadMeshMetadataExtraction",
+            "pipelines.useConversionCoordinateTransform",
+            "pipelines.useGenAiCadStepAgent",
+            "pipelines.usePreviewPcPotreeViewer",
+            "pipelines.usePreview3dThumbnail",
+            "pipelines.useGenAiMetadata3dLabeling",
+            "addons.useMirisStreaming.upload",
         ] as const
     ).map((name): Rule => {
-        const base = `app.pipelines.${name}`;
+        const base = `app.${name}`;
         return {
-            id: `pipeline-armed-trigger-unregistered-${name}`,
+            id: `pipeline-armed-trigger-unregistered-${name
+                .replace(/^pipelines\./, "")
+                .replace(/\./g, "-")}`,
             severity: "warning",
             fieldPaths: [
                 `${base}.autoRegisterWithVAMS`,
@@ -961,7 +1048,7 @@ export const RULES: Rule[] = [
                 !!g(c, `${base}.autoRegisterAutoTriggerOnFileUpload`) &&
                 g(c, `${base}.autoRegisterWithVAMS`) !== true,
             message:
-                `pipelines.${name}.autoRegisterAutoTriggerOnFileUpload is true but autoRegisterWithVAMS ` +
+                `${name}.autoRegisterAutoTriggerOnFileUpload is true but autoRegisterWithVAMS ` +
                 `is not, so no registration and no upload trigger are created. Set autoRegisterWithVAMS ` +
                 `to true to arm the trigger.`,
         };
@@ -1931,14 +2018,14 @@ export const RULES: Rule[] = [
         severity: "error",
         fieldPaths: ["app.useGlobalVpc.optionalExternalPrivateSubnetIds"],
         // The private-subnet list is wider than the public-subnet one: every AWS Batch pipeline places
-        // its compute environment in private subnets, so Splat Toolbox, Isaac Lab Training and the
-        // three NVIDIA pipelines require one too, not only RapidPipeline and ModelOps.
+        // its compute environment in private subnets, so Splat Toolbox, Isaac Lab Training, the
+        // three NVIDIA pipelines and Miris upload require one too, not only RapidPipeline and ModelOps.
         appliesWhen: (c) =>
             hasExternalVpc(c) &&
             usesPrivateSubnetPipeline(c) &&
             isUnset(g(c, "app.useGlobalVpc.optionalExternalPrivateSubnetIds")),
         message:
-            "Must define at least one private subnet ID when using an external VPC with a pipeline that requires private subnets (RapidPipeline, ModelOps, Splat Toolbox, Isaac Lab Training, or an NVIDIA pipeline).",
+            "Must define at least one private subnet ID when using an external VPC with a pipeline that requires private subnets (RapidPipeline, ModelOps, Splat Toolbox, Isaac Lab Training, an NVIDIA pipeline, or Miris upload).",
     },
     {
         id: "vpc-public-subnets",
@@ -3398,28 +3485,270 @@ export const RULES: Rule[] = [
             if (!g(c, "app.addons.usePhysnaSync.enabled")) return false;
             const value = String(g(c, path) ?? "");
             if (isBlank(value)) return false;
-            let host: string;
-            try {
-                host = new URL(value).hostname.toLowerCase().replace(/^\[|\]$/g, "");
-            } catch {
-                return false;
-            }
-            return (
-                host === "localhost" ||
-                host.endsWith(".localhost") ||
-                host.endsWith(".local") ||
-                host.endsWith(".internal") ||
-                host === "::1" ||
-                /^127\./.test(host) ||
-                /^169\.254\./.test(host) ||
-                /^10\./.test(host) ||
-                /^192\.168\./.test(host) ||
-                /^172\.(1[6-9]|2\d|3[01])\./.test(host) ||
-                /^(fc|fd)[0-9a-f]{2}:/.test(host)
-            );
+            return isPrivateEndpointHost(value);
         },
         message: `usePhysnaSync.${label} points at a loopback, link-local, or private address. It is called by a Lambda that can read the VAMS asset buckets, so it must name an external service.`,
     })),
+    // ----- Miris upload pipeline (config.ts: "Miris upload pipeline validation") -----
+    {
+        id: "miris-upload-requires-addon",
+        severity: "error",
+        fieldPaths: [
+            "app.addons.useMirisStreaming.upload.enabled",
+            "app.addons.useMirisStreaming.enabled",
+        ],
+        appliesWhen: (c) =>
+            !!g(c, "app.addons.useMirisStreaming.upload.enabled") &&
+            !g(c, "app.addons.useMirisStreaming.enabled"),
+        message:
+            "addons.useMirisStreaming.upload requires the Miris Spatial Streaming add-on (app.addons.useMirisStreaming.enabled). The pipeline reads the Miris Integration Key and API base URL from the add-on.",
+    },
+    // An absent upload field is filled with its default before these checks run.
+    ...(
+        [
+            ["taskTimeoutSeconds", "miris-upload-task-timeout"],
+            ["maxAssetSizeBytes", "miris-upload-max-asset-size"],
+        ] as const
+    ).map(
+        ([field, id]): Rule => ({
+            id,
+            severity: "error",
+            fieldPaths: [`app.addons.useMirisStreaming.upload.${field}`],
+            appliesWhen: (c) => {
+                const value = g(c, `app.addons.useMirisStreaming.upload.${field}`);
+                return (
+                    !!g(c, "app.addons.useMirisStreaming.upload.enabled") &&
+                    !isAbsent(value) &&
+                    !isPositiveInteger(value)
+                );
+            },
+            message: `addons.useMirisStreaming.upload.${field} must be a positive whole number.`,
+        })
+    ),
+    {
+        id: "miris-upload-trigger-extensions-whitespace",
+        severity: "error",
+        fieldPaths: ["app.addons.useMirisStreaming.upload.triggerExtensions"],
+        appliesWhen: (c) =>
+            !!g(c, "app.addons.useMirisStreaming.upload.enabled") &&
+            containsWhitespace(g(c, "app.addons.useMirisStreaming.upload.triggerExtensions")),
+        message:
+            'addons.useMirisStreaming.upload.triggerExtensions must not contain whitespace. List the extensions separated by commas only, such as ".usd,.usdz".',
+    },
+    {
+        id: "miris-upload-trigger-extensions-format",
+        severity: "error",
+        fieldPaths: ["app.addons.useMirisStreaming.upload.triggerExtensions"],
+        appliesWhen: (c) => {
+            const value = g(c, "app.addons.useMirisStreaming.upload.triggerExtensions");
+            return (
+                !!g(c, "app.addons.useMirisStreaming.upload.enabled") &&
+                !isAbsent(value) &&
+                !containsWhitespace(value) &&
+                parseMirisTriggerExtensions(value) === undefined
+            );
+        },
+        message:
+            'addons.useMirisStreaming.upload.triggerExtensions must be a comma-separated list of lowercase file extensions, such as ".usd,.usdz".',
+    },
+    {
+        id: "miris-upload-trigger-extensions-schema",
+        severity: "error",
+        fieldPaths: ["app.addons.useMirisStreaming.upload.triggerExtensions"],
+        appliesWhen: (c) => {
+            if (!g(c, "app.addons.useMirisStreaming.upload.enabled")) return false;
+            const extensions = parseMirisTriggerExtensions(
+                g(c, "app.addons.useMirisStreaming.upload.triggerExtensions")
+            );
+            return (
+                extensions !== undefined &&
+                extensions.some((extension) => !MIRIS_STREAM_SCHEMA_EXTENSIONS.includes(extension))
+            );
+        },
+        message:
+            "addons.useMirisStreaming.upload.triggerExtensions may only list extensions the Miris stream file metadata schema accepts (" +
+            MIRIS_STREAM_SCHEMA_EXTENSIONS.join(", ") +
+            ").",
+    },
+
+    // ----- Miris Spatial Streaming (config.ts: "Miris Spatial Streaming add-on validation") -----
+    {
+        id: "miris-commercial-partition-only",
+        severity: "error",
+        fieldPaths: ["app.addons.useMirisStreaming.enabled", "env.region"],
+        appliesWhen: (c) =>
+            !!g(c, "app.addons.useMirisStreaming.enabled") && !isCommercialPartition(c),
+        message:
+            "Miris Spatial Streaming is supported in the commercial partition only. Miris is reached at *.miris.com over the public internet.",
+    },
+    {
+        id: "miris-unsafe-eval",
+        severity: "error",
+        fieldPaths: ["app.addons.useMirisStreaming.enabled", "app.webUi.allowUnsafeEvalFeatures"],
+        appliesWhen: (c) =>
+            !!g(c, "app.addons.useMirisStreaming.enabled") &&
+            !g(c, "app.webUi.allowUnsafeEvalFeatures"),
+        message:
+            "Miris Spatial Streaming requires app.webUi.allowUnsafeEvalFeatures = true. The Miris web SDK compiles code at runtime.",
+    },
+    {
+        id: "miris-viewerkeymode",
+        severity: "error",
+        fieldPaths: ["app.addons.useMirisStreaming.viewerKeyMode"],
+        appliesWhen: (c) => {
+            if (!g(c, "app.addons.useMirisStreaming.enabled")) return false;
+            const mode = g(c, "app.addons.useMirisStreaming.viewerKeyMode");
+            return !isAbsent(mode) && !MIRIS_VIEWER_KEY_MODES.includes(mode);
+        },
+        message: 'addons.useMirisStreaming.viewerKeyMode must be "static" or "perView".',
+    },
+    {
+        id: "miris-viewerkey-ttl",
+        severity: "error",
+        fieldPaths: ["app.addons.useMirisStreaming.viewerKeyTtlMinutes"],
+        appliesWhen: (c) => {
+            if (!g(c, "app.addons.useMirisStreaming.enabled")) return false;
+            const ttl = g(c, "app.addons.useMirisStreaming.viewerKeyTtlMinutes");
+            if (isAbsent(ttl)) return false; // backfilled to 15
+            return typeof ttl !== "number" || !Number.isInteger(ttl) || ttl < 1 || ttl > 60;
+        },
+        message:
+            "addons.useMirisStreaming.viewerKeyTtlMinutes must be a whole number of minutes from 1 to 60.",
+    },
+    // An absent mirisApiBaseUrl is filled with https://app.miris.com; "" and "UNDEFINED" are not.
+    {
+        id: "miris-baseurl-required",
+        severity: "error",
+        fieldPaths: ["app.addons.useMirisStreaming.mirisApiBaseUrl"],
+        appliesWhen: (c) => {
+            const url = g(c, "app.addons.useMirisStreaming.mirisApiBaseUrl");
+            return !!g(c, "app.addons.useMirisStreaming.enabled") && !isAbsent(url) && isUnset(url);
+        },
+        message: "Miris Spatial Streaming requires mirisApiBaseUrl when enabled.",
+    },
+    {
+        id: "miris-baseurl-whitespace",
+        severity: "error",
+        fieldPaths: ["app.addons.useMirisStreaming.mirisApiBaseUrl"],
+        appliesWhen: (c) => {
+            const url = g(c, "app.addons.useMirisStreaming.mirisApiBaseUrl");
+            return (
+                !!g(c, "app.addons.useMirisStreaming.enabled") &&
+                !isUnset(url) &&
+                hasSurroundingWhitespace(url)
+            );
+        },
+        message:
+            "addons.useMirisStreaming.mirisApiBaseUrl has leading or trailing whitespace. Remove it.",
+    },
+    {
+        id: "miris-baseurl-url",
+        severity: "error",
+        fieldPaths: ["app.addons.useMirisStreaming.mirisApiBaseUrl"],
+        appliesWhen: (c) => {
+            const url = g(c, "app.addons.useMirisStreaming.mirisApiBaseUrl");
+            return (
+                !!g(c, "app.addons.useMirisStreaming.enabled") &&
+                !isUnset(url) &&
+                !hasSurroundingWhitespace(url) &&
+                !isValidUrl(url)
+            );
+        },
+        message: "addons.useMirisStreaming.mirisApiBaseUrl must be a valid URL.",
+    },
+    {
+        id: "miris-baseurl-https",
+        severity: "error",
+        fieldPaths: ["app.addons.useMirisStreaming.mirisApiBaseUrl"],
+        appliesWhen: (c) => {
+            const url = g(c, "app.addons.useMirisStreaming.mirisApiBaseUrl");
+            if (!g(c, "app.addons.useMirisStreaming.enabled") || !isValidUrl(url)) return false;
+            if (hasSurroundingWhitespace(url)) return false; // covered by miris-baseurl-whitespace
+            return new URL(url).protocol !== "https:";
+        },
+        message:
+            "addons.useMirisStreaming.mirisApiBaseUrl must use https. VAMS sends the Miris Integration Key to it, which plain http transmits in cleartext.",
+    },
+    {
+        id: "miris-baseurl-private-host",
+        severity: "error",
+        fieldPaths: ["app.addons.useMirisStreaming.mirisApiBaseUrl"],
+        appliesWhen: (c) => {
+            const url = g(c, "app.addons.useMirisStreaming.mirisApiBaseUrl");
+            if (!g(c, "app.addons.useMirisStreaming.enabled") || isUnset(url)) return false;
+            if (hasSurroundingWhitespace(url)) return false; // covered by miris-baseurl-whitespace
+            return isPrivateEndpointHost(String(url));
+        },
+        message:
+            "addons.useMirisStreaming.mirisApiBaseUrl points at a loopback, link-local, or private address. VAMS Lambdas send the Miris Integration Key to it, so it must name an external service.",
+    },
+    {
+        id: "miris-secret-required",
+        severity: "error",
+        fieldPaths: ["app.addons.useMirisStreaming.apiKeySecretArn"],
+        appliesWhen: (c) =>
+            !!g(c, "app.addons.useMirisStreaming.enabled") &&
+            isUnset(g(c, "app.addons.useMirisStreaming.apiKeySecretArn")),
+        message:
+            "Miris Spatial Streaming requires apiKeySecretArn, the Secrets Manager ARN of the Miris Integration Key, in both viewer key modes.",
+    },
+    {
+        id: "miris-secret-arn-format",
+        severity: "error",
+        fieldPaths: ["app.addons.useMirisStreaming.apiKeySecretArn"],
+        appliesWhen: (c) => {
+            if (!g(c, "app.addons.useMirisStreaming.enabled")) return false;
+            const arn = g(c, "app.addons.useMirisStreaming.apiKeySecretArn");
+            return !isUnset(arn) && !MIRIS_SECRET_ARN_PATTERN.test(String(arn));
+        },
+        message:
+            "addons.useMirisStreaming.apiKeySecretArn must be the complete ARN of a Secrets Manager secret, including the six-character suffix Secrets Manager appends to the secret name, in the commercial partition (arn:aws:secretsmanager:<region>:<account>:secret:<name>-AbCdEf).",
+    },
+    {
+        id: "miris-viewerkey-required",
+        severity: "error",
+        fieldPaths: ["app.addons.useMirisStreaming.viewerKey"],
+        appliesWhen: (c) =>
+            mirisStatic(c) && isBlank(g(c, "app.addons.useMirisStreaming.viewerKey")),
+        message:
+            'addons.useMirisStreaming.viewerKeyMode "static" requires viewerKey. Generate one in the Miris Portal or with `miris viewerkey create`.',
+    },
+    {
+        id: "miris-viewerkey-whitespace",
+        severity: "error",
+        fieldPaths: ["app.addons.useMirisStreaming.viewerKey"],
+        appliesWhen: (c) => {
+            if (!mirisStatic(c)) return false;
+            const key = g(c, "app.addons.useMirisStreaming.viewerKey");
+            return !isBlank(key) && hasSurroundingWhitespace(key);
+        },
+        message:
+            "addons.useMirisStreaming.viewerKey has leading or trailing whitespace. Remove it; a Miris viewer key contains none.",
+    },
+    {
+        id: "miris-viewerkey-short",
+        severity: "error",
+        fieldPaths: ["app.addons.useMirisStreaming.viewerKey"],
+        appliesWhen: (c) => {
+            if (!mirisStatic(c)) return false;
+            const key = g(c, "app.addons.useMirisStreaming.viewerKey");
+            if (isBlank(key) || hasSurroundingWhitespace(key)) return false;
+            return String(key).length < MIRIS_VIEWER_KEY_MIN_LENGTH;
+        },
+        message: `addons.useMirisStreaming.viewerKey is shorter than a Miris viewer key, which is at least ${MIRIS_VIEWER_KEY_MIN_LENGTH} characters. Check that the whole key was copied; Miris shows it only once at creation.`,
+    },
+    {
+        id: "miris-perview-viewerkey-ignored-warn",
+        severity: "warning",
+        fieldPaths: ["app.addons.useMirisStreaming.viewerKey"],
+        // config.ts: "viewerKey is ignored when"
+        appliesWhen: (c) =>
+            !!g(c, "app.addons.useMirisStreaming.enabled") &&
+            g(c, "app.addons.useMirisStreaming.viewerKeyMode") === "perView" &&
+            !isUnset(g(c, "app.addons.useMirisStreaming.viewerKey")),
+        message:
+            'addons.useMirisStreaming.viewerKey is ignored when viewerKeyMode is "perView". Remove it from config.json.',
+    },
 ];
 
 /** Evaluate every rule against the config and return those that apply. */

@@ -142,6 +142,9 @@ The AWS Deadline Cloud execution type is available when the deployment sets
 | Video SOP/BOM Extraction | Maximum size per video                   | 4 GB (`config.ts` constant)                                  |
 | Video SOP/BOM Extraction | Maximum total input size                 | 16 GB (`config.ts` constant)                                 |
 | Video SOP/BOM Extraction | Maximum total audio duration             | 240 minutes (`limits.maxTotalDurationMinutes`, 1-480)        |
+| Miris Upload             | Maximum source size                      | 5,000,000,000 bytes by default (`maxAssetSizeBytes`)         |
+| Miris Upload             | Miris processing wait                    | 1,800 seconds by default (`taskTimeoutSeconds`)              |
+| Miris Upload             | Workflow task timeout                    | 48 hours (`vamsSchema/pipeline.json`)                        |
 
 The Video SOP/BOM Extraction limits are enforced inside the pipeline: a run over a limit fails its pipeline step through the AWS Step Functions task token with a cause naming the observed value and the cap, rather than being rejected with a `400` as the template limits below are. See [Video SOP/BOM Extraction — Limits](../pipelines/video-sop-bom.md#limits).
 

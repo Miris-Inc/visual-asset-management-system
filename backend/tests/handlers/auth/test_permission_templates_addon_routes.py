@@ -4,12 +4,14 @@
 """A role built from a shipped permission template reaches the add-on routes its pages call.
 
 The web Physna viewer plugin requests ``GET /addon/physna/viewer`` (``API_ADDON_PHYSNA_VIEWER``) for a
-synced file, and the handler checks Tier 1 with ``enforceAPI`` before it reads the asset, so a role
-whose ``api`` constraints do not match the path receives ``403`` whatever its asset grants are. The
-seeded roles reach it: the read-only seed appends criterion ``16_${roleNameIDClean}_api_paths`` when
-``app.addons.usePhysnaSync.enabled`` is set (``dynamodb-authdefaults-ro-construct.ts``) and the
-administrator seed matches every api path. The templates are static JSON, so they carry the criterion
-unconditionally; on a deployment without the add-on it matches no deployed route.
+synced file, and the Miris streaming viewer requests ``GET /addon/miris/asset-status``
+(``API_ADDON_MIRIS_ASSET_STATUS``) and ``POST /addon/miris/viewer-key`` (``API_ADDON_MIRIS_VIEWER_KEY``).
+Each handler checks Tier 1 with ``enforceAPI`` before it reads the asset, so a role whose ``api``
+constraints do not match the path receives ``403`` whatever its asset grants are. The seeded roles
+reach them: the read-only seed appends the enabled add-ons' criteria to its GET and POST constraints
+(``addonDefaultRoutes.ts``, spliced by ``dynamodb-authdefaults-ro-construct.ts``) and the administrator
+seed matches every api path. The templates are static JSON, so they carry the criteria
+unconditionally; on a deployment without the add-on they match no deployed route.
 
 Each template is run through the import's own substitution and conversion (``substitute_variables``,
 ``build_constraint_data``) and then through the real policy generation and Casbin evaluation, with
@@ -29,7 +31,12 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 import backend.backend.handlers.authz as authz_module  # noqa: E402
-from backend.backend.common.apiRoutes import ADDON_ROUTES, API_ADDON_PHYSNA_VIEWER  # noqa: E402
+from backend.backend.common.apiRoutes import (  # noqa: E402
+    ADDON_ROUTES,
+    API_ADDON_MIRIS_ASSET_STATUS,
+    API_ADDON_MIRIS_VIEWER_KEY,
+    API_ADDON_PHYSNA_VIEWER,
+)
 from backend.backend.handlers.auth import authConstraintsTemplateService as svc  # noqa: E402
 
 REPO_ROOT = pathlib.Path(__file__).resolve().parents[4]
@@ -51,7 +58,36 @@ ADDON_ROUTE_GRANTS = {
         "database-readonly.json": ("GET",),
         "global-readonly.json": ("GET",),
     },
+    API_ADDON_MIRIS_ASSET_STATUS: {
+        "database-admin.json": ("GET",),
+        "database-user.json": ("GET",),
+        "database-readonly.json": ("GET",),
+        "global-readonly.json": ("GET",),
+    },
+    # A viewer key grants streaming only, so the read-only templates reach the route; its handler
+    # still checks the asset as a read (Tier 2) before any key is returned.
+    API_ADDON_MIRIS_VIEWER_KEY: {
+        "database-admin.json": ("POST",),
+        "database-user.json": ("POST",),
+        "database-readonly.json": ("POST",),
+        "global-readonly.json": ("POST",),
+    },
 }
+ALL_METHODS = ("GET",) + WRITE_METHODS
+# The operator each add-on route's criterion uses, in the templates and in the read-only seed. The
+# Miris routes match exactly, so no later route under the same prefix is granted with them.
+ADDON_ROUTE_OPERATORS = {
+    API_ADDON_PHYSNA_VIEWER: "starts_with",
+    API_ADDON_MIRIS_ASSET_STATUS: "equals",
+    API_ADDON_MIRIS_VIEWER_KEY: "equals",
+}
+NON_ADMIN_TEMPLATES = ("database-user.json", "database-readonly.json", "global-readonly.json")
+
+
+def _grant_pairs():
+    """(route, template) for every template that grants a route."""
+    return [(route, template) for route in sorted(ADDON_ROUTE_GRANTS, key=lambda route: route.path)
+            for template in sorted(ADDON_ROUTE_GRANTS[route])]
 
 
 def _template_names():
@@ -165,17 +201,18 @@ class TestTemplatesGrantTheAddonRoutes:
         assert allowed == expected, (
             f"{template_name} allows {sorted(allowed)} on {route.path}, expected {sorted(expected)}")
 
-    @pytest.mark.parametrize("template_name", [
-        "database-user.json", "database-readonly.json", "global-readonly.json"])
-    def test_a_non_admin_template_opens_no_write_method_on_the_viewer(
-            self, template_enforcer, template_name):
-        """The viewer grant sits on the template's GET constraint, so no write method reaches the
-        path through it."""
+    @pytest.mark.parametrize("template_name", NON_ADMIN_TEMPLATES)
+    @pytest.mark.parametrize("route", sorted(ADDON_ROUTE_GRANTS, key=lambda route: route.path),
+                             ids=lambda route: route.path)
+    def test_a_non_admin_template_opens_only_the_granted_methods(
+            self, template_enforcer, route, template_name):
+        """Each grant sits on the template's constraint for the route's own method (GET or POST), so
+        no other method reaches the path through it."""
         enforcer = template_enforcer(_stored_constraints(template_name))
-        request = _api_request(API_ADDON_PHYSNA_VIEWER.path)
-        assert enforcer.enforce(request, "GET") is True
-        opened = [method for method in WRITE_METHODS if enforcer.enforce(request, method)]
-        assert not opened, f"{template_name} allows {opened} on {API_ADDON_PHYSNA_VIEWER.path}"
+        request = _api_request(route.path)
+        opened = {method for method in ALL_METHODS if enforcer.enforce(request, method)}
+        assert opened == set(ADDON_ROUTE_GRANTS[route][template_name]), (
+            f"{template_name} allows {sorted(opened)} on {route.path}")
 
 
 @pytest.mark.unit
@@ -188,20 +225,27 @@ class TestTheTemplateEvaluationCanFail:
         assert enforcer.enforce(_api_request("/database/template-db/assets"), "GET") is True
         assert enforcer.enforce(_api_request("/buckets"), "GET") is False
 
-    @pytest.mark.parametrize("template_name", sorted(ADDON_ROUTE_GRANTS[API_ADDON_PHYSNA_VIEWER]))
-    def test_without_the_viewer_criterion_the_route_is_denied(self, template_enforcer, template_name):
-        """No other prefix a template carries covers the viewer path, so the criterion is the grant
+    @pytest.mark.parametrize("route,template_name", _grant_pairs(),
+                             ids=[f"{route.path}-{name}" for route, name in _grant_pairs()])
+    def test_without_the_route_criterion_the_route_is_denied(self, template_enforcer, route, template_name):
+        """No other prefix a template carries covers an add-on path, so the criterion is the grant
         rather than a duplicate of one."""
-        enforcer = template_enforcer(
-            _stored_constraints(template_name, drop_value=API_ADDON_PHYSNA_VIEWER.path))
-        assert enforcer.enforce(_api_request(API_ADDON_PHYSNA_VIEWER.path), "GET") is False
+        enforcer = template_enforcer(_stored_constraints(template_name, drop_value=route.path))
+        request = _api_request(_concrete_path(route.path))
+        assert not any(enforcer.enforce(request, method) for method in route.methods)
 
 
 @pytest.mark.unit
 class TestTemplatesMatchTheSeededGrant:
-    """The templates spell the viewer grant as the seeded read-only role does, so a template-built
-    role and the seeded role reach the same paths."""
+    """The templates spell each add-on grant as the seeded read-only role does (the route's operator
+    from ``ADDON_ROUTE_OPERATORS`` on the route path), so a template-built role and the seeded role
+    reach the same paths. A template that grants no add-on route carries no add-on criterion."""
 
-    @pytest.mark.parametrize("template_name", sorted(ADDON_ROUTE_GRANTS[API_ADDON_PHYSNA_VIEWER]))
-    def test_the_template_spells_the_criterion_as_the_seed_does(self, template_name):
-        assert _addon_criteria(template_name) == [("starts_with", API_ADDON_PHYSNA_VIEWER.path)]
+    def test_every_granted_route_has_an_operator(self):
+        assert set(ADDON_ROUTE_OPERATORS) == set(ADDON_ROUTE_GRANTS)
+
+    @pytest.mark.parametrize("template_name", _template_names())
+    def test_the_template_spells_each_criterion_as_the_seed_does(self, template_name):
+        granted = sorted((ADDON_ROUTE_OPERATORS[route], route.path)
+                         for route, grants in ADDON_ROUTE_GRANTS.items() if template_name in grants)
+        assert sorted(_addon_criteria(template_name)) == granted

@@ -24,7 +24,7 @@ web/src/visualizerPlugin/
 │   └── types.ts                  # TypeScript interfaces
 ├── config/
 │   ├── viewerConfig.json         # Core plugin configuration
-│   ├── addonViewerConfig.json    # Add-on viewers (Physna; licensed VNTANA, VEERUM)
+│   ├── addonViewerConfig.json    # Add-on viewers (Physna, Miris; licensed VNTANA, VEERUM)
 │   └── customViewerConfig.json   # Fork extension point (shipped empty)
 ├── components/                    # UI components
 │   ├── DynamicViewer.tsx         # Main viewer component
@@ -310,7 +310,21 @@ All plugin behavior is defined in `viewerConfig.json`:
 -   **Feature restriction**: `PHYSNA_ADDON` (set when `app.addons.usePhysnaSync.enabled` is `true`)
 -   **Note**: The file must be synced to Physna and finished indexing before it can be viewed.
 
-### 20. ThreeJSViewerPlugin
+### 20. MirisStreamViewerPlugin
+
+-   **ID**: `miris-stream-viewer`
+-   **Extensions**: `.usd`, `.usda`, `.usdc`, `.usdz`
+-   **Features**: Streams the Miris asset recorded in the file's `miris_*` metadata with the Miris web SDK (`<miris-scene>`). The component reads the file's stream state through `GET /addon/miris/asset-status`, gets a viewer key through `POST /addon/miris/viewer-key` once the asset is streamable, and checks again every 90 seconds while Miris is still preparing it. A stream built from another version of the file shows a warning.
+-   **Multi-file**: No
+-   **Dependencies**: `@miris-inc/components`, `@miris-inc/core`, `@miris-inc/three` and `three`, bundled by `web/customInstalls/miris/` into `public/viewers/miris/` and imported from there only when a file is streamed
+-   **Priority**: 0, with `autoSelect`, so it opens ahead of the Needle USD viewer
+-   **Category**: 3d
+-   **Feature restriction**: `MIRIS_ADDON` (set when `app.addons.useMirisStreaming.enabled` is `true`) and `ALLOWUNSAFEEVAL`
+-   **Enabled**: false (disabled by default)
+-   **Note**: Enable it with the add-on by setting `"enabled": true` on its entry in the add-on viewer configuration (`config/addonViewerConfig.json`) before running `npm install`, so that the install script bundles the SDK. See `web/customInstalls/miris/README.md`.
+-   **Note**: A file not yet streamed shows guidance that names the Needle USD viewer and the **Miris Spatial Streaming Upload** workflow, with a **Stream with Miris** button that starts that workflow for a user whose role may run workflows, when the deployment includes the upload pipeline (`MIRIS_UPLOAD`, set when `app.addons.useMirisStreaming.upload.enabled` is `true`). The browser needs WebGL 2.0; some Miris assets need WebGPU.
+
+### 21. ThreeJSViewerPlugin
 
 -   **ID**: `threejs-viewer`
 -   **Extensions**: `.gltf`, `.glb`, `.obj`, `.fbx`, `.stl`, `.ply`, `.dae`, `.3ds`, `.3mf`, `.usd`, `.usda`, `.usdc`, `.usdz`, `.stp`, `.step`, `.iges`, `.igs`, `.brep`
@@ -322,7 +336,7 @@ All plugin behavior is defined in `viewerConfig.json`:
 -   **Feature restriction**: none
 -   **Note**: The mesh formats are always offered. The CAD formats (`.stp`, `.step`, `.iges`, `.igs`, `.brep`) need a Three.js bundle built with OCCT (`occt-import-js`, LGPL, off by default; see `web/customInstalls/threejs/README.md`) and `SharedArrayBuffer` (cross-origin isolation headers). When either is missing, `loadFile()` in `ThreeJSViewerPlugin/utils/fileLoaders.ts` reports it on the file instead of hiding the viewer.
 
-### 21. RoboticsDataViewerPlugin
+### 22. RoboticsDataViewerPlugin
 
 -   **ID**: `robotics-data-viewer`
 -   **Extensions**: `.mcap`, `.bag`, `.db3`, `.ulg`, `.ulog`

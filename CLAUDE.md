@@ -10,7 +10,7 @@ VAMS is an AWS-native Visual Asset Management System for managing, visualizing, 
 -   **Python Lambda backend** (`backend/`) — Casbin ABAC/RBAC auth, DynamoDB, S3
 -   **CDK TypeScript infrastructure** (`infra/`) — 14 nested stacks, multi-partition support
 -   **Python CLI tool** (`tools/VamsCLI/`) — Click framework, profile-based config
--   **Processing pipelines** (`backendPipelines/`) — 3D conversion, coordinate transform, GenAI labeling, video SOP/BOM extraction, GenAI CAD STEP agent (Strands), Gaussian splatting, point cloud, 3D preview thumbnails, NVIDIA Cosmos Predict, NVIDIA Cosmos Reason, NVIDIA Cosmos Transfer, NVIDIA Cosmos 3 (omni), NVIDIA GR00T fine-tuning, NVIDIA Isaac Lab training, image to 3D, and more
+-   **Processing pipelines** (`backendPipelines/`) — 3D conversion, coordinate transform, GenAI labeling, video SOP/BOM extraction, GenAI CAD STEP agent (Strands), Gaussian splatting, point cloud, 3D preview thumbnails, NVIDIA Cosmos Predict, NVIDIA Cosmos Reason, NVIDIA Cosmos Transfer, NVIDIA Cosmos 3 (omni), NVIDIA GR00T fine-tuning, NVIDIA Isaac Lab training, image to 3D, Miris Spatial Streaming upload, and more
 
 ### **Version Info**
 
@@ -67,7 +67,10 @@ root/
 │   │   ├── imageTo3d/         # Image to 3D (Stable3DGen default, SAM 3D, TRELLIS.2, TripoSR, Step1X-3D, Hunyuan3D-2, Blender agent)
 │   │   ├── metadata3dLabeling/
 │   │   └── videoSopBom/       # Video SOP/BOM extraction (Amazon Transcribe + Amazon Bedrock)
-│   ├── conversion/, preview/, 3dRecon/, simulation/, multi/
+│   ├── conversion/
+│   │   ├── 3dBasic/, coordinateTransform/, meshCadMetadataExtraction/
+│   │   └── mirisUpload/       # Miris Spatial Streaming upload (USD to a streamable Miris asset; built by the Miris add-on)
+│   └── preview/, 3dRecon/, simulation/, multi/
 ├── documentation/             # User guides, API spec, permission templates
 │   └── CLAUDE.md              # Documentation development guide
 ├── .kiro/steering/            # Detailed workflow docs (Kiro steering, supplementary)
@@ -147,7 +150,7 @@ These are the critical patterns that span multiple directories. **Every develope
 Every list VAMS aggregates (routes, handlers, models, constants, resource names, feature switches, CDK resources, web routes and navigation, viewers) has three parts, merged in this order:
 
 -   **Core**: upstream code, edited every release.
--   **Add-on**: optional upstream code that is maintained upstream and enabled by configuration (`app.addons.*`, or a viewer's `enabled` flag in `addonViewerConfig.json`). An add-on either integrates VAMS with an external solution deployed and run separately (Garnet Framework, Physna), supplying the VAMS-side components, or is a stand-alone non-core component that VAMS deploys in full when enabled (the licensed VNTANA and VEERUM viewers). Its entries live in add-on files beside the core lists, never in the core file.
+-   **Add-on**: optional upstream code that is maintained upstream and enabled by configuration (`app.addons.*`, or a viewer's `enabled` flag in `addonViewerConfig.json`). An add-on either integrates VAMS with an external solution deployed and run separately (Garnet Framework, Miris Spatial Streaming, Physna), supplying the VAMS-side components, or is a stand-alone non-core component that VAMS deploys in full when enabled (the licensed VNTANA and VEERUM viewers). Its entries live in add-on files beside the core lists, never in the core file.
 -   **Custom**: code an organization adds in its own fork. Upstream ships every custom file empty and never edits it.
 
 Upstream adding an integration with an external solution uses the add-on lane; a fork uses the custom lane. Definition and the current add-ons: `documentation/docusaurus-site/docs/developer/addons-overview.md`. The files, list by list: `documentation/docusaurus-site/docs/developer/customizing-vams.md`.

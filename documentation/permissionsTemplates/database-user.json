@@ -202,6 +202,11 @@
                     "field": "route__path",
                     "operator": "starts_with",
                     "value": "/addon/physna/viewer"
+                },
+                {
+                    "field": "route__path",
+                    "operator": "equals",
+                    "value": "/addon/miris/asset-status"
                 }
             ],
             "groupPermissions": [
@@ -271,6 +276,11 @@
                     "field": "route__path",
                     "operator": "starts_with",
                     "value": "/workflows"
+                },
+                {
+                    "field": "route__path",
+                    "operator": "equals",
+                    "value": "/addon/miris/viewer-key"
                 }
             ],
             "groupPermissions": [

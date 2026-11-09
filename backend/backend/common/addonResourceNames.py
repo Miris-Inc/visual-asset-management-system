@@ -14,8 +14,9 @@ Key suffixes under ``addon/`` are recommended so a later core key does not colli
 here; an exact duplicate of a core or custom key fails at synth.
 """
 
-from common.resourceNames import ResourceParamKey  # noqa: F401
+from common.resourceNames import ResourceParamKey
 
 
 class AddonResourceKeys:
-    pass
+    # Miris Spatial Streaming: per-view viewer key records
+    MIRIS_VIEWER_KEY_STORAGE_TABLE = ResourceParamKey("addon/miris/viewerKeyStorage", ("MIRIS_VIEWER_KEY_STORAGE_TABLE_NAME",))

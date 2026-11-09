@@ -66,7 +66,7 @@ export const SECTIONS: Section[] = [
         id: "pipelines-gpu",
         label: "Pipelines — NVIDIA / GPU & third-party",
         description:
-            "GPU-backed pipelines: Cosmos, Gr00t, Image to 3D, Isaac Lab, Gaussian Splatting, RapidPipeline, ModelOps.",
+            "GPU-backed and third-party pipelines: Cosmos, Gr00t, Image to 3D, Isaac Lab, Gaussian Splatting, RapidPipeline, ModelOps.",
         advanced: true,
         order: 8,
     },
@@ -105,6 +105,13 @@ const externalVpc = (c: ConfigShape) => {
 };
 const garnet = (c: ConfigShape) => !!getByPath(c, "app.addons.useGarnetFramework.enabled");
 const physna = (c: ConfigShape) => !!getByPath(c, "app.addons.usePhysnaSync.enabled");
+const miris = (c: ConfigShape) => !!getByPath(c, "app.addons.useMirisStreaming.enabled");
+const mirisStatic = (c: ConfigShape) =>
+    miris(c) && getByPath(c, "app.addons.useMirisStreaming.viewerKeyMode") !== "perView";
+const mirisPerView = (c: ConfigShape) =>
+    miris(c) && getByPath(c, "app.addons.useMirisStreaming.viewerKeyMode") === "perView";
+const mirisUpload = (c: ConfigShape) =>
+    miris(c) && !!getByPath(c, "app.addons.useMirisStreaming.upload.enabled");
 
 /**
  * Factory for a GPU model sub-tree (Cosmos / Gr00t). Each model has enabled,
@@ -1954,6 +1961,123 @@ export const FIELDS: FieldMeta[] = [
         advanced: true,
         help: "Optional: ARN of an operator-managed Secrets Manager secret ({clientId, clientSecret}). When set, client ID/secret above are ignored.",
         visibleWhen: physna,
+    },
+    {
+        path: "app.addons.useMirisStreaming.enabled",
+        label: "Miris Spatial Streaming",
+        input: "boolean",
+        section: "addons",
+        advanced: true,
+        help: "Streams 3D assets uploaded to Miris in the VAMS viewer. Requires allowUnsafeEvalFeatures. Commercial partition only.",
+    },
+    {
+        path: "app.addons.useMirisStreaming.viewerKeyMode",
+        label: "Miris viewer key mode",
+        input: "select",
+        section: "addons",
+        advanced: true,
+        options: [
+            { value: "static", label: "Static (one deployment-wide viewer key)" },
+            { value: "perView", label: "Per view (a short-lived key minted per viewer open)" },
+        ],
+        help: "static returns the configured viewer key to an authorized viewer. perView mints a short-lived viewer key scoped to the one Miris asset each time an authorized user opens the viewer.",
+        visibleWhen: miris,
+    },
+    {
+        path: "app.addons.useMirisStreaming.viewerKey",
+        label: "Miris viewer key",
+        input: "text",
+        section: "addons",
+        advanced: true,
+        help: "Required in static mode (at least 16 characters); ignored in perView mode. A viewer key authorizes streaming only and is meant to reach the browser, so scope it with tags and an expiry when you create it. Miris shows it only once.",
+        visibleWhen: mirisStatic,
+    },
+    {
+        path: "app.addons.useMirisStreaming.viewerKeyTtlMinutes",
+        label: "Miris per-view key lifetime (minutes)",
+        input: "number",
+        section: "addons",
+        advanced: true,
+        min: 1,
+        help: "Whole number from 1 to 60. How long a minted viewer key can start new streams; a stream already open keeps playing after its key expires.",
+        visibleWhen: mirisPerView,
+    },
+    {
+        path: "app.addons.useMirisStreaming.apiKeySecretArn",
+        label: "Miris Integration Key secret ARN",
+        input: "text",
+        section: "addons",
+        advanced: true,
+        placeholder:
+            "arn:aws:secretsmanager:us-east-1:123456789012:secret:miris-integration-key-AbCdEf",
+        help: "Required in both modes. Complete Secrets Manager ARN, including the six-character suffix, of the secret holding the Miris Integration Key. It checks that a Miris asset is bound to the VAMS asset before a viewer key is returned, mints per-view keys, and is read by the Miris upload pipeline.",
+        visibleWhen: miris,
+    },
+    {
+        path: "app.addons.useMirisStreaming.mirisApiBaseUrl",
+        label: "Miris API base URL",
+        input: "text",
+        section: "addons",
+        advanced: true,
+        placeholder: "https://app.miris.com",
+        help: "Must be https and an external host.",
+        visibleWhen: miris,
+    },
+    {
+        path: "app.addons.useMirisStreaming.upload.enabled",
+        label: "Miris upload",
+        input: "boolean",
+        section: "addons",
+        advanced: true,
+        help: "Deploys the add-on's upload pipeline, which uploads USD source files to Miris and records the Miris asset UUID in the file's metadata so the viewer can stream them, and offers the viewer's Stream with Miris button. Requires a VPC. Commercial partition only.",
+        visibleWhen: miris,
+    },
+    {
+        path: "app.addons.useMirisStreaming.upload.autoRegisterWithVAMS",
+        label: "Miris upload auto-register",
+        input: "boolean",
+        section: "addons",
+        advanced: true,
+        visibleWhen: mirisUpload,
+    },
+    {
+        path: "app.addons.useMirisStreaming.upload.autoRegisterAutoTriggerOnFileUpload",
+        label: "Miris upload auto-trigger on upload",
+        input: "boolean",
+        section: "addons",
+        advanced: true,
+        help: "Runs the pipeline when a file with a trigger extension is uploaded. Off: run it from the file manager only.",
+        visibleWhen: mirisUpload,
+    },
+    {
+        path: "app.addons.useMirisStreaming.upload.triggerExtensions",
+        label: "Miris upload trigger file extensions",
+        input: "text",
+        section: "addons",
+        advanced: true,
+        placeholder: ".usd,.usda,.usdc,.usdz",
+        help: "Comma-separated lowercase extensions. Each must be one the Miris stream file metadata schema accepts: .usd, .usda, .usdc or .usdz.",
+        visibleWhen: mirisUpload,
+    },
+    {
+        path: "app.addons.useMirisStreaming.upload.taskTimeoutSeconds",
+        label: "Miris upload task timeout (seconds)",
+        input: "number",
+        section: "addons",
+        advanced: true,
+        min: 1,
+        help: "How long the upload task may run. A positive whole number.",
+        visibleWhen: mirisUpload,
+    },
+    {
+        path: "app.addons.useMirisStreaming.upload.maxAssetSizeBytes",
+        label: "Miris upload max source size (bytes)",
+        input: "number",
+        section: "addons",
+        advanced: true,
+        min: 1,
+        help: "Largest source asset the pipeline uploads to Miris. A positive whole number.",
+        visibleWhen: mirisUpload,
     },
 
     // ===== API & Web UI =====

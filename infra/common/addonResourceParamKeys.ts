@@ -11,4 +11,9 @@
  * (nestedStacks/addon/addonStackHelpers.ts). Key suffixes under `addon/` are recommended; a key
  * equal to a core or custom key fails at synth.
  */
-export const ADDON_RESOURCE_PARAM_KEYS: Record<string, Record<string, string>> = {};
+export const ADDON_RESOURCE_PARAM_KEYS: Record<string, Record<string, string>> = {
+    dynamoTables: {
+        // Miris Spatial Streaming: per-view viewer key records
+        mirisViewerKeyStorage: "addon/miris/viewerKeyStorage",
+    },
+};

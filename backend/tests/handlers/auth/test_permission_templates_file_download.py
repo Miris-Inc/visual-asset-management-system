@@ -35,6 +35,7 @@ from backend.backend.common.apiRoutes import (  # noqa: E402
     API_SEARCH_SIMPLE,
     POST,
 )
+from backend.backend.common.addonApiRoutes import API_ADDON_MIRIS_VIEWER_KEY  # noqa: E402
 from backend.backend.handlers.auth import authConstraintsTemplateService as svc  # noqa: E402
 
 REPO_ROOT = pathlib.Path(__file__).resolve().parents[4]
@@ -57,6 +58,7 @@ READ_ONLY_POST_ROUTES = {
     API_SEARCH_SIMPLE,
     API_CHECK_SUBSCRIPTION,
     API_DOWNLOAD_ASSET,
+    API_ADDON_MIRIS_VIEWER_KEY,
 }
 DOWNLOAD_CONSTRAINT_NAME = "{{ROLE_NAME}}-api-routes-download"
 

@@ -60,6 +60,8 @@ SHIPPED_CRITERION_VALUES = [
     '/permanent',
     '/amplify-config',
     '/api/amplify-config',
+    '/addon/miris/asset-status',
+    '/addon/miris/viewer-key',
     '/addon/physna/viewer',
     '/asset-links',
     '/assetIngestion',

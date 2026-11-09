@@ -231,6 +231,7 @@ Each pipeline step in a workflow receives designated Amazon S3 output paths from
 | GenAI Metadata 3D Labeling         | AWS Batch (Fargate)                                     | AI-powered metadata labeling using Amazon Bedrock and Amazon Rekognition                       |
 | Video SOP/BOM Extraction           | AWS Batch (Fargate)                                     | Teardown-video transcription and SOP/BOM extraction using Amazon Transcribe and Amazon Bedrock |
 | GenAI CAD STEP Agent               | Amazon Bedrock AgentCore Runtime or AWS Batch (Fargate) | Create or modify a CAD STEP file from a natural-language instruction with a Strands agent      |
+| Miris Upload                       | AWS Batch (Fargate)                                     | Upload of a USD asset to Miris Spatial Streaming for the Miris viewer                          |
 | Model Optimization (ModelOps)      | AWS Batch (Fargate)                                     | Optimize 3D models for web delivery                                                            |
 | RapidPipeline (ECS)                | AWS Batch (Fargate)                                     | RapidPipeline integration via Amazon ECS                                                       |
 | RapidPipeline (EKS)                | Amazon EKS                                              | RapidPipeline integration via Amazon EKS                                                       |
@@ -289,11 +290,13 @@ Configuration values resolve through a four-tier fallback chain:
 | `AUTHPROVIDER_COGNITO_OIDC`     | Amazon Cognito with OIDC federation                                                  |
 | `AUTHPROVIDER_EXTERNALOAUTHIDP` | External OAuth identity provider                                                     |
 | `PHYSNA_ADDON`                  | Physna add-on frontend features enabled                                              |
+| `MIRIS_ADDON`                   | Miris Spatial Streaming add-on enabled                                               |
+| `MIRIS_UPLOAD`                  | Miris Spatial Streaming add-on upload pipeline enabled                               |
 | `DEADLINECLOUD_PIPELINES`       | AWS Deadline Cloud pipeline execution type enabled                                   |
 
 ## Nested Stack Dependency Chain
 
-The following diagram shows the nested stacks that `CoreVAMSStack` builds and the deployment order declared between them. Each solid arrow is an explicit `addStackDependency()` call in `infra/lib/core-stack.ts`, drawn from the prerequisite stack to the stack that deploys after it; the stacks the root points at declare no dependency, except LocationService, which declares one on StaticWeb when the static web stack is built. RestApi renders the routes that ApiBuilder, ApiBuilder2, SearchBuilder, and AddonBuilder register into a single Amazon API Gateway REST API, so it deploys after each of them.
+The following diagram shows the nested stacks that `CoreVAMSStack` builds and the deployment order declared between them. Each solid arrow is an explicit `addStackDependency()` call in `infra/lib/core-stack.ts`, drawn from the prerequisite stack to the stack that deploys after it; the stacks the root points at declare no dependency, except LocationService, which declares one on StaticWeb when the static web stack is built. The dashed arrow is declared only when the Miris upload pipeline is deployed (`app.addons.useMirisStreaming.upload.enabled`), whose registration custom resource invokes a Lambda function in ApiBuilder2. RestApi renders the routes that ApiBuilder, ApiBuilder2, SearchBuilder, and AddonBuilder register into a single Amazon API Gateway REST API, so it deploys after each of them.
 
 Stacks also read each other's outputs (the Lambda layers, `storageResources`, `authResources`, and the VPC), and AWS CloudFormation orders each such reference implicitly. StaticWeb reads the REST API endpoint and `authResources`, and declares its dependencies on RestApi and AuthBuilder explicitly. When `env.loadContextIgnoreVPCStacks` is `true`, ApiBuilder, ApiBuilder2, SearchBuilder, PipelineBuilder, AddonBuilder, RestApi, and StaticWeb are not built.
 
@@ -327,6 +330,7 @@ graph TD
 
     SRB --> Addon["AddonBuilder"]
     RNB --> Addon
+    APIBuild2 -.-> Addon
 
     SRB --> REST["RestApi"]
     AB --> REST

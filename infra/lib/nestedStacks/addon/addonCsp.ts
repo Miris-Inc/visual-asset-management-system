@@ -9,6 +9,8 @@ import * as Config from "../../../config/config";
 export interface AddonCspSources {
     connectSrc: string[];
     frameSrc: string[];
+    /** Sources merged into `script-src`. */
+    scriptSrc: string[];
 }
 
 /**
@@ -16,7 +18,7 @@ export interface AddonCspSources {
  * `generateContentSecurityPolicy()` (`lib/helper/security.ts`).
  */
 export function addonCspSources(config: Config.Config): AddonCspSources {
-    const sources: AddonCspSources = { connectSrc: [], frameSrc: [] };
+    const sources: AddonCspSources = { connectSrc: [], frameSrc: [], scriptSrc: [] };
 
     // When the Physna add-on is enabled the viewer plugin embeds Physna's
     // hosted viewer URL directly in an `<iframe src>`. Allow that origin
@@ -46,6 +48,17 @@ export function addonCspSources(config: Config.Config): AddonCspSources {
         // `'unsafe-inline'` would have no effect on it, and none on a VAMS page
         // either: a source list that carries a hash source never allows all
         // inline script, so browsers ignore the keyword wherever it appears.
+    }
+
+    // The Miris web SDK streams from *.miris.com over HTTPS and WebSocket, and
+    // imports part of its engine from a `blob:` script URL. The Miris API base URL
+    // is called only by the add-on's Lambdas, so it is not a browser source.
+    // The `'unsafe-eval'` the SDK also needs comes from
+    // app.webUi.allowUnsafeEvalFeatures, which getConfig() requires with the add-on.
+    if (config.app.addons?.useMirisStreaming?.enabled) {
+        const mirisHosts = "*.miris.com";
+        sources.connectSrc.push(`https://${mirisHosts}`, `wss://${mirisHosts}`);
+        sources.scriptSrc.push("blob:");
     }
 
     return sources;

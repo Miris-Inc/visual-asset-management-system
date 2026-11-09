@@ -113,13 +113,18 @@ See [Physna Integration](../developer/physna-integration.md) for configuration, 
 
 The following integrations require separate commercial licenses from their respective vendors.
 
-| Integration                                 | Purpose                                                  | License Type                 | VAMS Component                                                        |
-| ------------------------------------------- | -------------------------------------------------------- | ---------------------------- | --------------------------------------------------------------------- |
-| [RapidPipeline](https://rapidpipeline.com/) | Spatial data conversions and optimizations               | Commercial (AWS Marketplace) | Processing pipeline (`useRapidPipeline`)                              |
-| [VNTANA](https://www.vntana.com/)           | 3D ModelOps: conversions, optimizations, and web viewing | Commercial (AWS Marketplace) | Viewer plugin (`vntana-viewer`) + Processing pipeline (`useModelOps`) |
-| [Veerum](https://veerum.com/)               | Advanced 3D viewer for point clouds and 3D tilesets      | Commercial                   | Viewer plugin (`veerum-viewer`)                                       |
+| Integration                                 | Purpose                                                        | License Type                                | VAMS Component                                                                     |
+| ------------------------------------------- | -------------------------------------------------------------- | ------------------------------------------- | ---------------------------------------------------------------------------------- |
+| [RapidPipeline](https://rapidpipeline.com/) | Spatial data conversions and optimizations                     | Commercial (AWS Marketplace)                | Processing pipeline (`useRapidPipeline`)                                           |
+| [VNTANA](https://www.vntana.com/)           | 3D ModelOps: conversions, optimizations, and web viewing       | Commercial (AWS Marketplace)                | Viewer plugin (`vntana-viewer`) + Processing pipeline (`useModelOps`)              |
+| [Veerum](https://veerum.com/)               | Advanced 3D viewer for point clouds and 3D tilesets            | Commercial                                  | Viewer plugin (`veerum-viewer`)                                                    |
+| [Miris](https://miris.com/)                 | Progressive spatial streaming of USD assets in the file viewer | Commercial service (Miris account required) | Addon (`useMirisStreaming`), with its upload pipeline (`useMirisStreaming.upload`) |
 
 ### Enabling Licensed Integrations
+
+#### Miris Spatial Streaming
+
+The Miris Spatial Streaming [add-on](../developer/addons-overview.md) streams USD files from the hosted Miris service in the VAMS file viewer, and its optional Miris Upload pipeline uploads a VAMS asset's root USD file to Miris and records the Miris asset in the file's metadata. Both require a Miris account, a Miris Integration Key stored in AWS Secrets Manager, and the commercial `aws` partition. See [Miris Spatial Streaming](../developer/miris-spatial-streaming.md) and [Miris Upload](../pipelines/miris-upload.md).
 
 #### RapidPipeline
 

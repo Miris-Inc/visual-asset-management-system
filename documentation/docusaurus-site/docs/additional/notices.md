@@ -40,14 +40,14 @@ You are also responsible for making your own independent assessment of the third
 
 The complete list of third-party dependencies and their licenses is maintained in the project's `NOTICE.md` file. Key categories include:
 
-| Category         | Notable Libraries                                                | Licenses                      |
-| ---------------- | ---------------------------------------------------------------- | ----------------------------- |
-| Web application  | React, Vite, Cloudscape Design System, Amplify                   | MIT, Apache-2.0               |
-| 3D visualization | Three.js, BabylonJS, CesiumJS, Potree, PlayCanvas, Needle Engine | MIT, Apache-2.0, BSD-2-Clause |
-| Backend          | Pydantic, Casbin, boto3, aws-lambda-powertools                   | MIT, Apache-2.0, MIT-0        |
-| 3D conversion    | trimesh, NumPy, Pillow (3D Basic Conversion pipeline)            | MIT, BSD-3-Clause, MIT-CMU    |
-| Infrastructure   | AWS CDK, cdk-nag, constructs                                     | Apache-2.0                    |
-| CLI              | Click, requests, boto3, pycognito                                | BSD-3-Clause, Apache-2.0      |
+| Category         | Notable Libraries                                                               | Licenses                      |
+| ---------------- | ------------------------------------------------------------------------------- | ----------------------------- |
+| Web application  | React, Vite, Cloudscape Design System, Amplify                                  | MIT, Apache-2.0               |
+| 3D visualization | Three.js, BabylonJS, CesiumJS, Potree, PlayCanvas, Needle Engine, Miris web SDK | MIT, Apache-2.0, BSD-2-Clause |
+| Backend          | Pydantic, Casbin, boto3, aws-lambda-powertools                                  | MIT, Apache-2.0, MIT-0        |
+| 3D conversion    | trimesh, NumPy, Pillow (3D Basic Conversion pipeline)                           | MIT, BSD-3-Clause, MIT-CMU    |
+| Infrastructure   | AWS CDK, cdk-nag, constructs                                                    | Apache-2.0                    |
+| CLI              | Click, requests, boto3, pycognito                                               | BSD-3-Clause, Apache-2.0      |
 
 ### Optional LGPL-Licensed Components
 
@@ -124,12 +124,17 @@ variants likewise fetch LPIPS and ZoeDepth weights at run time.
 
 Some viewer plugins and processing pipelines require separate commercial licenses:
 
-| Component                     | Vendor                                                        | License         |
-| ----------------------------- | ------------------------------------------------------------- | --------------- |
-| VNTANA 3D Model Viewer        | [VNTANA](https://www.vntana.com/)                             | Commercial      |
-| VNTANA 3D Optimization Engine | VNTANA (AWS Marketplace)                                      | Commercial EULA |
-| Veerum 3D Viewer              | [Veerum](https://veerum.com/)                                 | Commercial      |
-| RapidPipeline 3D Processor    | [RapidPipeline](https://rapidpipeline.com/) (AWS Marketplace) | Commercial      |
+| Component                     | Vendor                                                        | License            |
+| ----------------------------- | ------------------------------------------------------------- | ------------------ |
+| VNTANA 3D Model Viewer        | [VNTANA](https://www.vntana.com/)                             | Commercial         |
+| VNTANA 3D Optimization Engine | VNTANA (AWS Marketplace)                                      | Commercial EULA    |
+| Veerum 3D Viewer              | [Veerum](https://veerum.com/)                                 | Commercial         |
+| RapidPipeline 3D Processor    | [RapidPipeline](https://rapidpipeline.com/) (AWS Marketplace) | Commercial         |
+| Miris Spatial Streaming       | [Miris](https://miris.com/) (hosted service)                  | Commercial service |
+
+### Miris Spatial Streaming Notice
+
+Miris Spatial Streaming is a commercial service on the public internet. The optional [Miris Spatial Streaming add-on](../developer/miris-spatial-streaming.md) streams assets from it, and the optional [Miris Upload pipeline](../pipelines/miris-upload.md) uploads USD assets to it, so enabling either sends data to Miris and requires a Miris account subject to the Miris terms of service. The add-on's viewer uses the Miris web SDK (`@miris-inc/components`, `@miris-inc/three`, `@miris-inc/core`, Apache-2.0) with Three.js (MIT), which the web application's Miris custom install (`web/customInstalls/miris/`) bundles only when the viewer is enabled, as the VNTANA and Veerum viewer installs do for their packages. The upload pipeline container is built on the `python:3.12-slim` image and installs `usd-core` (OpenUSD, TOST-1.0, which is Apache-2.0 with a different Section 6), `requests`, `boto3`, and `botocore` (Apache-2.0); the exact versions are in the repository's `NOTICE.md`.
 
 ### NVIDIA License Notices
 
