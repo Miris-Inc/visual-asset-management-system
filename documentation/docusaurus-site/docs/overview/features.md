@@ -265,22 +265,22 @@ Pipelines that use AWS Batch Fargate containers require `useGlobalVpc.enabled` t
 
 VAMS uses a feature flag system to conditionally enable capabilities at deployment time. Feature flags are persisted to Amazon DynamoDB and read by the web interface at runtime.
 
-| Feature Flag                    | Description                                                                                                                                                                       |
-| ------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `GOVCLOUD`                      | Indicates AWS GovCloud deployment mode (also set for AWS European Sovereign Cloud deployments)                                                                                    |
-| `ALLOWUNSAFEEVAL`               | Enables viewers requiring `unsafe-eval` CSP (Needle USD, SuperSplat Editor, ThatOpen IFC BIM, Robotics Data Viewer, Three.js CAD formats, and the Miris Spatial Streaming viewer) |
-| `LOCATIONSERVICES`              | Enables Amazon Location Service integration for map views                                                                                                                         |
-| `ALBDEPLOY`                     | Indicates Application Load Balancer web distribution                                                                                                                              |
-| `CLOUDFRONTDEPLOY`              | Indicates Amazon CloudFront web distribution                                                                                                                                      |
-| `NOOPENSEARCH`                  | Indicates Amazon OpenSearch is disabled                                                                                                                                           |
-| `AUTHPROVIDER_COGNITO`          | Indicates Amazon Cognito authentication                                                                                                                                           |
-| `AUTHPROVIDER_COGNITO_SAML`     | Indicates Amazon Cognito with SAML federation                                                                                                                                     |
-| `AUTHPROVIDER_COGNITO_OIDC`     | Indicates Amazon Cognito with OIDC federation                                                                                                                                     |
-| `AUTHPROVIDER_EXTERNALOAUTHIDP` | Indicates external OAuth2 authentication                                                                                                                                          |
-| `PHYSNA_ADDON`                  | Enables Physna add-on frontend features (viewer plugin, future Physna-powered UI surfaces). Emitted automatically when `app.addons.usePhysnaSync.enabled` is `true`.              |
-| `MIRIS_ADDON`                   | Enables the Miris Spatial Streaming viewer plugin for USD files, together with `ALLOWUNSAFEEVAL`. Emitted automatically when `app.addons.useMirisStreaming.enabled` is `true`.    |
-| `MIRIS_UPLOAD`                  | Offers the Miris viewer's **Stream with Miris** button, which runs the Miris upload pipeline. Emitted automatically when `app.addons.useMirisStreaming.upload.enabled` is `true`. |
-| `DEADLINECLOUD_PIPELINES`       | Enables the AWS Deadline Cloud pipeline execution type in the web interface. Emitted automatically when `app.pipelines.deadlineCloudExecutionTypeEnabled` is `true`.              |
+| Feature Flag                    | Description                                                                                                                                                                                                |
+| ------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GOVCLOUD`                      | Indicates AWS GovCloud deployment mode (also set for AWS European Sovereign Cloud deployments)                                                                                                             |
+| `ALLOWUNSAFEEVAL`               | Enables viewers requiring `unsafe-eval` CSP (Needle USD, SuperSplat Editor, ThatOpen IFC BIM, Robotics Data Viewer, Online 3D Viewer `.3dm`, Three.js CAD formats, and the Miris Spatial Streaming viewer) |
+| `LOCATIONSERVICES`              | Enables Amazon Location Service integration for map views                                                                                                                                                  |
+| `ALBDEPLOY`                     | Indicates Application Load Balancer web distribution                                                                                                                                                       |
+| `CLOUDFRONTDEPLOY`              | Indicates Amazon CloudFront web distribution                                                                                                                                                               |
+| `NOOPENSEARCH`                  | Indicates Amazon OpenSearch is disabled                                                                                                                                                                    |
+| `AUTHPROVIDER_COGNITO`          | Indicates Amazon Cognito authentication                                                                                                                                                                    |
+| `AUTHPROVIDER_COGNITO_SAML`     | Indicates Amazon Cognito with SAML federation                                                                                                                                                              |
+| `AUTHPROVIDER_COGNITO_OIDC`     | Indicates Amazon Cognito with OIDC federation                                                                                                                                                              |
+| `AUTHPROVIDER_EXTERNALOAUTHIDP` | Indicates external OAuth2 authentication                                                                                                                                                                   |
+| `PHYSNA_ADDON`                  | Enables Physna add-on frontend features (viewer plugin, future Physna-powered UI surfaces). Emitted automatically when `app.addons.usePhysnaSync.enabled` is `true`.                                       |
+| `MIRIS_ADDON`                   | Enables the Miris Spatial Streaming viewer plugin for USD files, together with `ALLOWUNSAFEEVAL`. Emitted automatically when `app.addons.useMirisStreaming.enabled` is `true`.                             |
+| `MIRIS_UPLOAD`                  | Offers the Miris viewer's **Stream with Miris** button, which runs the Miris upload pipeline. Emitted automatically when `app.addons.useMirisStreaming.upload.enabled` is `true`.                          |
+| `DEADLINECLOUD_PIPELINES`       | Enables the AWS Deadline Cloud pipeline execution type in the web interface. Emitted automatically when `app.pipelines.deadlineCloudExecutionTypeEnabled` is `true`.                                       |
 
 ### Additional Configuration
 
