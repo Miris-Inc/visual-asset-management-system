@@ -554,7 +554,7 @@ describe("MirisStreamViewerComponent", () => {
             await waitForGuidance();
             expect(streamButton()).toBeInTheDocument();
             expect(mockCan).toHaveBeenCalledWith("POST", EXECUTE_ROUTE);
-            // The Needle and Automation guidance stays beside the button.
+            // The Automation guidance stays beside the button.
             expect(screen.getByText("Automation")).toBeInTheDocument();
             expect(screen.getByText("Miris Spatial Streaming Upload")).toBeInTheDocument();
         });
@@ -569,7 +569,7 @@ describe("MirisStreamViewerComponent", () => {
             expect(streamButton()).not.toBeInTheDocument();
             // Neither the button nor the guidance that points to it.
             expect(screen.queryByText("Stream with Miris")).not.toBeInTheDocument();
-            // The Needle and Automation guidance remains.
+            // The Automation guidance remains.
             expect(screen.getByText("Automation")).toBeInTheDocument();
             expect(screen.getByText("Miris Spatial Streaming Upload")).toBeInTheDocument();
             expect(mockFindRunningMirisUpload).not.toHaveBeenCalled();

@@ -68,7 +68,7 @@ The add-on includes one viewer plugin for USD files.
 | --------------------- | --------------------------------- | -------- | ----------------------------------- | ------------------------------------------------------------------- |
 | `miris-stream-viewer` | `.usd`, `.usda`, `.usdc`, `.usdz` | 0        | `MIRIS_ADDON` and `ALLOWUNSAFEEVAL` | Streams the Miris asset recorded in the USD file's stream metadata. |
 
-The plugin's entry in `web/src/visualizerPlugin/config/addonViewerConfig.json` ships with `"enabled": false` and is enabled with the add-on (see [Configuration](#configuration)). It sets `autoSelect: true`. When the plugin is the only USD viewer at the lowest priority (`0`), it opens automatically in visualize mode instead of waiting for the user to choose; the Needle USD Viewer (priority `1`) stays in the viewer selector. In compare mode the viewer selector behaves as for any other file type.
+The plugin's entry in `web/src/visualizerPlugin/config/addonViewerConfig.json` ships with `"enabled": false` and is enabled with the add-on (see [Configuration](#configuration)). It sets `autoSelect: true`. When the plugin is the only USD viewer at the lowest priority (`0`), it opens automatically in visualize mode instead of waiting for the user to choose; the Needle USD Viewer and the Three.js Viewer (priority `1`) stay in the viewer selector. In compare mode the viewer selector behaves as for any other file type.
 
 When a USD file is opened, the plugin acts on the stream status:
 
@@ -227,7 +227,7 @@ The viewer plugin ships disabled in the web application, as the licensed viewers
 2. Run `npm install` (or `npm ci`) in `web/`. Its `postinstall` runs `web/customInstalls/miris/mirisInstall.js`, which installs and bundles the [web SDK](#web-sdk) into `web/public/viewers/miris/`. To rebuild only the SDK bundle, run `node customInstalls/miris/mirisInstall.js` from `web/`.
 3. Build the web application (`npm run build` in `web/`) and deploy it with the add-on configuration above.
 
-With the entry enabled but `MIRIS_ADDON` or `ALLOWUNSAFEEVAL` absent, the viewer is not offered. With the add-on enabled but the entry disabled, the USD files open in the Needle USD Viewer and no Miris viewer is offered.
+With the entry enabled but `MIRIS_ADDON` or `ALLOWUNSAFEEVAL` absent, the viewer is not offered. With the add-on enabled but the entry disabled, USD files offer the Needle USD Viewer and the Three.js Viewer in the viewer selector, and no Miris viewer is offered.
 
 ### Integration Key
 
