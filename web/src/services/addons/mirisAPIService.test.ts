@@ -387,6 +387,7 @@ describe("isExecutionInProgress", () => {
         [{ executionStatus: "NEW" }, true],
         [{ executionStatus: "SUCCEEDED" }, false],
         [{ executionStatus: "COMPLETE" }, false],
+        [{ executionStatus: "SKIPPED" }, false],
         [{ executionStatus: "RUNNING", executionStopDate: "2026-10-29T11:00:00Z" }, false],
     ])("%o -> %s", (execution, expected) => {
         expect(isExecutionInProgress(execution as any)).toBe(expected);

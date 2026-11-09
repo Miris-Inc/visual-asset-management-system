@@ -58,6 +58,7 @@ const TERMINAL_EXECUTION_STATUSES = new Set([
     "ABORTED",
     "TIMED_OUT",
     "COMPLETE",
+    "SKIPPED",
 ]);
 
 /** Upper bound on the execution list pages one in-progress lookup reads. */
